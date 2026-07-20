@@ -1,0 +1,3 @@
+# Streaming Normalization Buffer
+
+The Proxy TTS Entity normalizes streamed text through a bounded pending buffer instead of applying Replacement Rules to each incoming chunk. It keeps a configurable Streaming Safety Tail, defaulting to 64 characters, flushes preferentially at sentence-like punctuation boundaries before that tail, falls back to whitespace boundaries when the buffer grows too large, and flushes all remaining text when the input stream ends. This preserves streaming responsiveness without breaking replacements that span Home Assistant or LLM chunk boundaries.

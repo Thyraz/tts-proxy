@@ -1,0 +1,59 @@
+{
+  "title": "TTS Proxy",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Create TTS Proxy",
+        "description": "Choose the TTS entity that should receive normalized text.",
+        "data": {
+          "name": "Name",
+          "final_tts_entity": "Final TTS Entity"
+        }
+      },
+      "details": {
+        "title": "Configure TTS Proxy",
+        "description": "Choose the output language supported by the selected Final TTS Entity, then configure replacements and streaming buffer settings.",
+        "data": {
+          "output_language": "Output Language",
+          "replacement_rules": "Replacement Rules",
+          "safety_tail_chars": "Streaming Safety Tail",
+          "max_buffer_chars": "Streaming Buffer Limit"
+        }
+      }
+    },
+    "error": {
+      "invalid_final_tts_entity": "Select a non-proxy TTS entity.",
+      "unsupported_output_language": "The selected Final TTS Entity does not support this Output Language.",
+      "invalid_rule": "One or more Replacement Rules are invalid.",
+      "invalid_buffer_config": "Streaming Buffer Limit must be greater than Streaming Safety Tail."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure TTS Proxy",
+        "description": "Choose the TTS entity that should receive normalized text.",
+        "data": {
+          "name": "Name",
+          "final_tts_entity": "Final TTS Entity"
+        }
+      },
+      "details": {
+        "title": "Configure TTS Proxy Details",
+        "description": "Choose the output language supported by the selected Final TTS Entity, then configure replacements and streaming buffer settings.",
+        "data": {
+          "output_language": "Output Language",
+          "replacement_rules": "Replacement Rules",
+          "safety_tail_chars": "Streaming Safety Tail",
+          "max_buffer_chars": "Streaming Buffer Limit"
+        }
+      }
+    },
+    "error": {
+      "invalid_final_tts_entity": "Select a non-proxy TTS entity.",
+      "unsupported_output_language": "The selected Final TTS Entity does not support this Output Language.",
+      "invalid_rule": "One or more Replacement Rules are invalid.",
+      "invalid_buffer_config": "Streaming Buffer Limit must be greater than Streaming Safety Tail."
+    }
+  }
+}
