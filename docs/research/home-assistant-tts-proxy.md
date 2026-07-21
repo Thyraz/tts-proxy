@@ -130,7 +130,7 @@ The proxy entity should decide whether it mirrors the delegate's metadata live o
 - `supported_languages`: best mirrored from the delegate, with optional language filtering.
 - `default_language`: best mirrored from the delegate.
 - `supported_options`: should include only options that the proxy will pass through or handle. At minimum, pass through `voice` and HA preferred audio options.
-- `async_get_supported_voices(language)`: should delegate to the selected final TTS entity.
+- `async_get_supported_voices(language)`: should delegate to the selected target TTS entity.
 - `async_supports_streaming_input`: should return true only when the proxy implements streaming and either can stream to the delegate or has an explicit "stream input but buffer all before audio" behavior. For good Assist UX, true should mean it can produce audio before the full LLM response is done.
 
 ### Risks to decide

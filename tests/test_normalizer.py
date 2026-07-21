@@ -16,7 +16,7 @@ from custom_components.tts_proxy.const import (
     CONF_DATE_LOCALE,
     CONF_DATE_NORMALIZER_ENABLED,
     CONF_DATE_RENDERER,
-    CONF_FINAL_TTS_ENTITY,
+    CONF_TARGET_TTS_ENTITY,
     CONF_MAX_BUFFER_CHARS,
     CONF_NUMBER_NORMALIZER_ENABLED,
     CONF_NUMBER_SPELLOUT_LANGUAGE,
@@ -26,6 +26,8 @@ from custom_components.tts_proxy.const import (
     CONF_SAFETY_TAIL_CHARS,
     DATE_INPUT_FORMAT_DMY_DOT,
     DATE_INPUT_FORMAT_DMY_DOT_NO_YEAR,
+    DATE_INPUT_FORMAT_DMY_DOT_SPACED,
+    DATE_INPUT_FORMAT_DMY_DOT_SPACED_NO_YEAR,
     DATE_INPUT_FORMAT_DMY_MONTH_NAME,
     DATE_INPUT_FORMAT_DMY_SLASH,
     DATE_INPUT_FORMAT_MDY_MONTH_NAME,
@@ -41,6 +43,7 @@ from custom_components.tts_proxy.const import (
     RULE_MODE,
     RULE_MODE_LITERAL,
     RULE_MODE_REGEX,
+    RULE_NAME,
     RULE_REPLACE,
 )
 from custom_components.tts_proxy.date_normalizer import (
@@ -77,14 +80,28 @@ def _fake_german_number(value: int | str, language: str) -> str:
         raise ValueError(f"Unexpected language: {language}")
 
     return {
+        -1: "minus eins",
         -5: "minus fünf",
+        0: "null",
+        1: "eins",
+        2: "zwei",
+        3: "drei",
+        4: "vier",
+        5: "fünf",
+        6: "sechs",
+        7: "sieben",
+        8: "acht",
+        9: "neun",
         12: "zwölf",
         13: "dreizehn",
         30: "dreißig",
         53: "dreiundfünfzig",
         123: "einhundertdreiundzwanzig",
         "0.5": "null Komma fünf",
+        "0.7": "null Komma sieben",
         "53.4": "dreiundfünfzig Komma vier",
+        "7.7": "sieben Komma sieben",
+        "7.1234": "sieben Komma eins zwei drei vier",
     }[value]
 
 
@@ -94,6 +111,8 @@ def _fake_date_number(value: int, language: str, purpose: str) -> str:
         ("de", "ordinal", 5): "fünfte",
         ("de", "ordinal", 14): "vierzehnte",
         ("de", "ordinal", 15): "fünfzehnte",
+        ("de", "ordinal", 23): "dreiundzwanzigste",
+        ("de", "ordinal", 27): "siebenundzwanzigste",
         ("de", "year", 1984): "neunzehnhundertvierundachtzig",
         ("de", "year", 2025): "zweitausendfünfundzwanzig",
         ("de", "year", 2026): "zweitausendsechsundzwanzig",
@@ -124,6 +143,7 @@ def _date_normalizer(
     renderer: str = DATE_RENDERER_CURATED,
     input_formats: tuple[str, ...] = (
         DATE_INPUT_FORMAT_DMY_DOT,
+        DATE_INPUT_FORMAT_DMY_DOT_SPACED,
         DATE_INPUT_FORMAT_DMY_DOT_NO_YEAR,
         DATE_INPUT_FORMAT_DMY_MONTH_NAME,
         DATE_INPUT_FORMAT_YMD_DASH,
@@ -164,6 +184,14 @@ class ReplacementRuleTests(unittest.TestCase):
 
     def test_literal_rule_replaces_exact_text(self) -> None:
         rule = ReplacementRule("kWh", "Kilowattstunden")
+
+        self.assertEqual(
+            normalize_text("Heute 12 kWh verbraucht.", [rule]),
+            "Heute 12 Kilowattstunden verbraucht.",
+        )
+
+    def test_rule_name_does_not_affect_matching(self) -> None:
+        rule = ReplacementRule("kWh", "Kilowattstunden", name="Energy unit")
 
         self.assertEqual(
             normalize_text("Heute 12 kWh verbraucht.", [rule]),
@@ -315,6 +343,25 @@ class NumberNormalizerTests(unittest.TestCase):
             "Temp dreiundfünfzig Komma vier und dreiundfünfzig Komma vier.",
         )
 
+    def test_decimal_formatting_zeroes_are_trimmed_before_spellout(self) -> None:
+        self.assertEqual(
+            normalize_text(
+                "Werte 07.70, 0007.123400, 0007.000 und 0.70.",
+                [],
+                _german_number_normalizer(),
+            ),
+            (
+                "Werte sieben Komma sieben, sieben Komma eins zwei drei vier, "
+                "sieben und null Komma sieben."
+            ),
+        )
+
+    def test_leading_zero_integers_are_spoken_as_digit_sequences(self) -> None:
+        self.assertEqual(
+            normalize_text("Codes 007, 000123 und -09.", [], _german_number_normalizer()),
+            "Codes null null sieben, null null null eins zwei drei und minus null neun.",
+        )
+
     def test_skips_structured_and_identifier_tokens(self) -> None:
         def fail_on_call(value: int | str, language: str) -> str:
             raise AssertionError(f"Unexpected conversion: {value} {language}")
@@ -326,7 +373,7 @@ class NumberNormalizerTests(unittest.TestCase):
         )
         text = (
             "IP 192.168.1.1, Version v1.2.3, Datum 20.07.2026, "
-            "Zeit 12:30, ESP32, B12, 007."
+            "Zeit 12:30, ESP32, B12, B007, sensor_007."
         )
 
         self.assertEqual(normalize_text(text, [], normalizer), text)
@@ -368,7 +415,7 @@ class NumberNormalizerTests(unittest.TestCase):
         ):
             config = parse_proxy_config(
                 {
-                    CONF_FINAL_TTS_ENTITY: "tts.final",
+                    CONF_TARGET_TTS_ENTITY: "tts.target",
                     CONF_OUTPUT_LANGUAGE: "de-DE",
                     CONF_NUMBER_NORMALIZER_ENABLED: True,
                     CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
@@ -386,7 +433,7 @@ class NumberNormalizerTests(unittest.TestCase):
             with self.assertRaises(NumberNormalizationError):
                 parse_proxy_config(
                     {
-                        CONF_FINAL_TTS_ENTITY: "tts.final",
+                        CONF_TARGET_TTS_ENTITY: "tts.target",
                         CONF_OUTPUT_LANGUAGE: "de-DE",
                         CONF_NUMBER_NORMALIZER_ENABLED: True,
                         CONF_NUMBER_SPELLOUT_LANGUAGE: "xx",
@@ -437,12 +484,109 @@ class DateNormalizerTests(unittest.TestCase):
             "Termin vierzehnter Mai zweitausendsechsundzwanzig.",
         )
 
+    def test_german_spaced_dot_dates_render_with_month_names(self) -> None:
+        normalizer = _date_normalizer()
+
+        self.assertEqual(
+            normalizer.normalize("Termin 23. 05.2026."),
+            "Termin dreiundzwanzigster Mai zweitausendsechsundzwanzig.",
+        )
+        self.assertEqual(
+            normalizer.normalize("Termin 23. 05. 2026."),
+            "Termin dreiundzwanzigster Mai zweitausendsechsundzwanzig.",
+        )
+
     def test_german_dates_after_am_use_dative_ordinal(self) -> None:
         normalizer = _date_normalizer()
 
         self.assertEqual(
             normalizer.normalize("Termin am 14.05. um 12 Uhr."),
             "Termin am vierzehnten Mai um 12 Uhr.",
+        )
+
+    def test_german_dates_after_der_use_weak_nominative_ordinal(self) -> None:
+        normalizer = _date_normalizer()
+
+        self.assertEqual(
+            normalizer.normalize("Der nächste Freitag ist der 14.05.2026."),
+            (
+                "Der nächste Freitag ist der vierzehnte Mai "
+                "zweitausendsechsundzwanzig."
+            ),
+        )
+        self.assertEqual(
+            normalizer.normalize("Dieser 15. August 2025 ist frei."),
+            "Dieser fünfzehnte August zweitausendfünfundzwanzig ist frei.",
+        )
+
+    def test_german_dates_after_oblique_context_use_en_ordinal(self) -> None:
+        normalizer = _date_normalizer()
+
+        self.assertEqual(
+            normalizer.normalize("Geplant für den 14.05.2026."),
+            "Geplant für den vierzehnten Mai zweitausendsechsundzwanzig.",
+        )
+        self.assertEqual(
+            normalizer.normalize("Seit dem 14.05. läuft es."),
+            "Seit dem vierzehnten Mai läuft es.",
+        )
+
+    def test_german_dates_after_bare_dative_prepositions_use_em_ordinal(self) -> None:
+        normalizer = _date_normalizer()
+
+        self.assertEqual(
+            normalizer.normalize("Gültig ab 14.05."),
+            "Gültig ab vierzehntem Mai.",
+        )
+        self.assertEqual(
+            normalizer.normalize("Nach 15. August 2025 prüfen."),
+            "Nach fünfzehntem August zweitausendfünfundzwanzig prüfen.",
+        )
+
+    def test_german_date_range_uses_context_for_each_date(self) -> None:
+        normalizer = _date_normalizer()
+
+        self.assertEqual(
+            normalizer.normalize("Zeitraum von 14.05. bis 15.05."),
+            "Zeitraum von vierzehntem Mai bis fünfzehnten Mai.",
+        )
+
+    def test_spaced_no_year_dot_dates_are_separate_input_format(self) -> None:
+        normalizer = _date_normalizer(
+            input_formats=(DATE_INPUT_FORMAT_DMY_DOT_SPACED_NO_YEAR,)
+        )
+
+        self.assertEqual(
+            normalizer.normalize("Termin 23. 05. um 12 Uhr."),
+            "Termin dreiundzwanzigster Mai um 12 Uhr.",
+        )
+
+    def test_adjacent_no_year_dot_dates_are_left_unchanged(self) -> None:
+        normalizer = _date_normalizer(
+            input_formats=(
+                DATE_INPUT_FORMAT_DMY_DOT_NO_YEAR,
+                DATE_INPUT_FORMAT_DMY_DOT_SPACED_NO_YEAR,
+            )
+        )
+
+        text = "Termine 23.05. 27.05. und 23. 05. 27. 05."
+
+        self.assertEqual(normalizer.normalize(text), text)
+
+    def test_separated_no_year_dot_dates_are_normalized(self) -> None:
+        normalizer = _date_normalizer(
+            input_formats=(
+                DATE_INPUT_FORMAT_DMY_DOT_NO_YEAR,
+                DATE_INPUT_FORMAT_DMY_DOT_SPACED_NO_YEAR,
+            )
+        )
+
+        self.assertEqual(
+            normalizer.normalize("Zeitraum 23.05. - 27.05. und 23. 05. bis 27. 05."),
+            (
+                "Zeitraum dreiundzwanzigster Mai - siebenundzwanzigster Mai "
+                "und dreiundzwanzigster Mai bis siebenundzwanzigsten Mai."
+            ),
         )
 
     def test_no_year_dot_date_preserves_sentence_dot_at_line_end(self) -> None:
@@ -527,6 +671,14 @@ class DateNormalizerTests(unittest.TestCase):
         self.assertEqual(default_date_renderer("fr-FR"), DATE_RENDERER_NUMERIC_FALLBACK)
         self.assertIn(
             DATE_INPUT_FORMAT_DMY_DOT,
+            default_date_input_formats("de-DE"),
+        )
+        self.assertIn(
+            DATE_INPUT_FORMAT_DMY_DOT_SPACED,
+            default_date_input_formats("de-DE"),
+        )
+        self.assertNotIn(
+            DATE_INPUT_FORMAT_DMY_DOT_SPACED_NO_YEAR,
             default_date_input_formats("de-DE"),
         )
         self.assertIn(
@@ -692,6 +844,18 @@ class StreamingNormalizerTests(unittest.IsolatedAsyncioTestCase):
             "Termin am fünfzehnten August zweitausendfünfundzwanzig um 12 Uhr.",
         )
 
+    async def test_stream_does_not_flush_inside_spaced_dot_date(self) -> None:
+        output = await _collect_stream(
+            ["Termin am 14. 05. um 12 Uhr."],
+            [],
+            None,
+            _date_normalizer(input_formats=(DATE_INPUT_FORMAT_DMY_DOT_SPACED_NO_YEAR,)),
+            safety_tail_chars=5,
+            max_buffer_chars=500,
+        )
+
+        self.assertEqual("".join(output), "Termin am vierzehnten Mai um 12 Uhr.")
+
 
 class ConfigTests(unittest.TestCase):
     """Proxy Configuration parsing."""
@@ -700,10 +864,11 @@ class ConfigTests(unittest.TestCase):
         config = parse_proxy_config(
             {
                 "name": "German proxy",
-                CONF_FINAL_TTS_ENTITY: "tts.final",
+                CONF_TARGET_TTS_ENTITY: "tts.target",
                 CONF_OUTPUT_LANGUAGE: "de-DE",
                 CONF_REPLACEMENT_RULES: [
                     {
+                        RULE_NAME: "Energy unit",
                         RULE_ENABLED: True,
                         RULE_MODE: RULE_MODE_LITERAL,
                         RULE_FIND: "kWh",
@@ -719,9 +884,10 @@ class ConfigTests(unittest.TestCase):
         )
 
         self.assertEqual(config.name, "German proxy")
-        self.assertEqual(config.final_tts_entity, "tts.final")
+        self.assertEqual(config.target_tts_entity, "tts.target")
         self.assertEqual(config.output_language, "de-DE")
         self.assertEqual(len(config.rules), 1)
+        self.assertEqual(config.rules[0].name, "Energy unit")
         self.assertFalse(config.number_normalizer.enabled)
         self.assertEqual(config.number_normalizer.language, "de")
         self.assertEqual(config.safety_tail_chars, 64)
@@ -735,7 +901,7 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_proxy_config(
                 {
-                    CONF_FINAL_TTS_ENTITY: None,
+                    CONF_TARGET_TTS_ENTITY: None,
                     CONF_OUTPUT_LANGUAGE: "de-DE",
                 }
             )
@@ -744,7 +910,7 @@ class ConfigTests(unittest.TestCase):
         config = serializable_config(
             {
                 "name": "German proxy",
-                CONF_FINAL_TTS_ENTITY: "tts.final",
+                CONF_TARGET_TTS_ENTITY: "tts.target",
                 CONF_OUTPUT_LANGUAGE: "de-DE",
                 CONF_PREVIEW_TEXT: "Temp 53.4°C.",
             }
@@ -756,10 +922,11 @@ class ConfigTests(unittest.TestCase):
         config = serializable_config(
             {
                 "name": "German proxy",
-                CONF_FINAL_TTS_ENTITY: "tts.final",
+                CONF_TARGET_TTS_ENTITY: "tts.target",
                 CONF_OUTPUT_LANGUAGE: "de-DE",
                 CONF_REPLACEMENT_RULES: [
                     {
+                        RULE_NAME: "Energy unit",
                         RULE_ENABLED: False,
                         RULE_MODE: RULE_MODE_LITERAL,
                         RULE_FIND: "kwh",
@@ -771,6 +938,7 @@ class ConfigTests(unittest.TestCase):
         )
 
         [rule] = config[CONF_REPLACEMENT_RULES]
+        self.assertEqual(rule[RULE_NAME], "Energy unit")
         self.assertNotIn(RULE_ENABLED, rule)
         self.assertNotIn(RULE_IGNORE_CASE, rule)
         self.assertTrue(rule[RULE_DISABLED])
@@ -782,6 +950,7 @@ class ConfigTests(unittest.TestCase):
                 CONF_PREVIEW_TEXT: "Temp 53.4°C.",
                 CONF_REPLACEMENT_RULES: [
                     {
+                        RULE_NAME: "Broken regex",
                         RULE_ENABLED: False,
                         RULE_MODE: RULE_MODE_REGEX,
                         RULE_FIND: "(",
@@ -794,6 +963,7 @@ class ConfigTests(unittest.TestCase):
 
         [rule] = defaults[CONF_REPLACEMENT_RULES]
         self.assertNotIn(CONF_PREVIEW_TEXT, defaults)
+        self.assertEqual(rule[RULE_NAME], "Broken regex")
         self.assertNotIn(RULE_ENABLED, rule)
         self.assertNotIn(RULE_IGNORE_CASE, rule)
         self.assertEqual(rule[RULE_FIND], "(")

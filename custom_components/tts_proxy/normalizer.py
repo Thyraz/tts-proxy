@@ -16,6 +16,7 @@ from .const import (
     DEFAULT_SAFETY_TAIL_CHARS,
     RULE_ENABLED,
     RULE_DISABLED,
+    RULE_NAME,
     RULE_FIND,
     RULE_IGNORE_CASE,
     RULE_CASE_SENSITIVE,
@@ -66,6 +67,7 @@ class ReplacementRule:
     mode: RuleMode = RuleMode.LITERAL
     ignore_case: bool = False
     enabled: bool = True
+    name: str = ""
 
     def __post_init__(self) -> None:
         """Validate direct rule construction."""
@@ -98,6 +100,7 @@ class ReplacementRule:
             mode=mode,
             ignore_case=ignore_case,
             enabled=enabled,
+            name=str(raw.get(RULE_NAME, "") or "").strip(),
         )
 
     def validate(self) -> None:
@@ -160,6 +163,24 @@ class NumberNormalizer:
         number_text = match.group(0)
         if not _is_eligible_numeric_match(match):
             return number_text
+
+        digit_sequence = _leading_zero_integer_digits(number_text)
+        if digit_sequence is not None:
+            try:
+                return _spellout_digit_sequence(
+                    digit_sequence,
+                    self.language,
+                    self._number_converter,
+                    negative=number_text.startswith("-"),
+                )
+            except (
+                ArithmeticError,
+                ImportError,
+                NotImplementedError,
+                TypeError,
+                ValueError,
+            ):
+                return number_text
 
         value = _number_value(number_text)
         if value is None:
@@ -348,7 +369,8 @@ def _normalize_segment(
 
 def _number_value(number_text: str) -> int | str | None:
     """Return a converter value for eligible numeric text."""
-    unsigned = number_text[1:] if number_text.startswith("-") else number_text
+    negative = number_text.startswith("-")
+    unsigned = number_text[1:] if negative else number_text
     separator = _decimal_separator(unsigned)
 
     if separator is None:
@@ -357,12 +379,19 @@ def _number_value(number_text: str) -> int | str | None:
         return int(number_text)
 
     integer_part, fraction_part = unsigned.split(separator, 1)
-    if not _integer_part_is_eligible(integer_part):
+    if not _integer_part_length_is_eligible(integer_part):
         return None
     if len(fraction_part) > _MAX_FRACTION_DIGITS:
         return None
 
-    return number_text.replace(",", ".")
+    normalized_integer = integer_part.lstrip("0") or "0"
+    normalized_fraction = fraction_part.rstrip("0")
+    if not normalized_fraction:
+        value = int(normalized_integer)
+        return -value if negative and value else value
+
+    sign = "-" if negative else ""
+    return f"{sign}{normalized_integer}.{normalized_fraction}"
 
 
 def _decimal_separator(unsigned_number_text: str) -> str | None:
@@ -378,13 +407,57 @@ def _decimal_separator(unsigned_number_text: str) -> str | None:
 
 def _integer_part_is_eligible(integer_part: str) -> bool:
     """Return if an integer part is safe to spell out."""
-    if not integer_part:
-        return False
-    if len(integer_part) > _MAX_INTEGER_DIGITS:
+    if not _integer_part_length_is_eligible(integer_part):
         return False
     if len(integer_part) > 1 and integer_part.startswith("0"):
         return False
     return True
+
+
+def _integer_part_length_is_eligible(integer_part: str) -> bool:
+    """Return if an integer part has a safe size."""
+    if not integer_part:
+        return False
+    if len(integer_part) > _MAX_INTEGER_DIGITS:
+        return False
+    return True
+
+
+def _leading_zero_integer_digits(number_text: str) -> tuple[int, ...] | None:
+    """Return digits for a simple leading-zero integer token."""
+    unsigned = number_text[1:] if number_text.startswith("-") else number_text
+    if _decimal_separator(unsigned) is not None:
+        return None
+    if not _integer_part_length_is_eligible(unsigned):
+        return None
+    if len(unsigned) <= 1 or not unsigned.startswith("0"):
+        return None
+    return tuple(int(char) for char in unsigned)
+
+
+def _spellout_digit_sequence(
+    digits: tuple[int, ...],
+    language: str,
+    converter: NumberConverter,
+    *,
+    negative: bool,
+) -> str:
+    """Spell a leading-zero integer as individual digits."""
+    words = [str(converter(digit, language)) for digit in digits]
+    if negative:
+        words.insert(0, _localized_minus_word(language, converter))
+    return " ".join(words)
+
+
+def _localized_minus_word(language: str, converter: NumberConverter) -> str:
+    """Return a localized minus word using the configured converter."""
+    minus_one = str(converter(-1, language))
+    one = str(converter(1, language))
+    if minus_one.endswith(one):
+        minus_word = minus_one[: -len(one)].strip()
+        if minus_word:
+            return minus_word
+    return "minus"
 
 
 def _is_eligible_numeric_match(match: re.Match[str]) -> bool:

@@ -1,8 +1,18 @@
 # TTS Proxy
 
-TTS Proxy is a Home Assistant custom integration that exposes a TTS entity, normalizes the text, and forwards it to another TTS entity.
+TTS Proxy is a Home Assistant custom integration that exposes a TTS entity, allows replacements in the text, and forwards it to another TTS entity.
 
-It can apply replacement rules, date normalization, and number spellout before the final TTS service receives the text.
+The main use case is adjusting text from an LLM Assist response before it is sent to the TTS service. This is often needed to improve audio output for dates, numbers, units, and similar text.
+
+It can apply replacements based on:
+
+- user-defined rules using string literals or regular expressions
+- date detection
+- number detection
+
+This happens before the target TTS service receives the text.
+
+TTS Proxy supports streaming and non-streaming TTS integrations.
 
 ## Install with HACS
 
@@ -27,10 +37,15 @@ Then restart Home Assistant.
 
 1. Go to **Settings** -> **Devices & services**.
 2. Add the **TTS Proxy** integration.
-3. Choose the final TTS entity that should receive the processed text.
+3. Choose the target TTS entity that should receive the processed text.
 4. Select the output language.
-5. Add replacement rules and enable date or number normalization if needed.
+5. Add replacement rules, optionally name them, and enable date or number detection if needed.
 
-Use the preview field in the options flow to check the transformed text before saving.
+Use the preview area in the options dialog to test the processed text before saving.
 
 After setup, select **TTS Proxy** anywhere Home Assistant lets you choose a TTS provider.
+
+## Example
+
+- LLM response: `Tomorrow 03/12/2026 the outside temperature will be 25°C.`
+- Possible TTS Proxy output: `Tomorrow March twelfth, twenty twenty-six the outside temperature will be twenty-five degrees.`

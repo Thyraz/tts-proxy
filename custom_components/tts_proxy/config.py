@@ -10,7 +10,7 @@ from .const import (
     CONF_DATE_LOCALE,
     CONF_DATE_NORMALIZER_ENABLED,
     CONF_DATE_RENDERER,
-    CONF_FINAL_TTS_ENTITY,
+    CONF_TARGET_TTS_ENTITY,
     CONF_MAX_BUFFER_CHARS,
     CONF_NUMBER_NORMALIZER_ENABLED,
     CONF_NUMBER_SPELLOUT_LANGUAGE,
@@ -28,6 +28,7 @@ from .const import (
     RULE_IGNORE_CASE,
     RULE_MODE,
     RULE_MODE_LITERAL,
+    RULE_NAME,
     RULE_REPLACE,
 )
 from .normalizer import (
@@ -47,7 +48,7 @@ class ProxyConfig:
     """Validated Proxy Configuration."""
 
     name: str
-    final_tts_entity: str
+    target_tts_entity: str
     output_language: str
     rules: tuple[ReplacementRule, ...]
     date_normalizer: DateNormalizer
@@ -74,10 +75,10 @@ def parse_proxy_config(raw_config: dict[str, Any]) -> ProxyConfig:
     )
     validate_streaming_buffer_config(safety_tail_chars, max_buffer_chars)
 
-    final_tts_entity = _clean_string(raw_config.get(CONF_FINAL_TTS_ENTITY))
+    target_tts_entity = _clean_string(raw_config.get(CONF_TARGET_TTS_ENTITY))
     output_language = _clean_string(raw_config.get(CONF_OUTPUT_LANGUAGE))
-    if not final_tts_entity:
-        raise ValueError("Final TTS Entity is required")
+    if not target_tts_entity:
+        raise ValueError("Target TTS Entity is required")
     if not output_language:
         raise ValueError("Output Language is required")
 
@@ -85,7 +86,7 @@ def parse_proxy_config(raw_config: dict[str, Any]) -> ProxyConfig:
 
     return ProxyConfig(
         name=name,
-        final_tts_entity=final_tts_entity,
+        target_tts_entity=target_tts_entity,
         output_language=output_language,
         rules=parse_rules(raw_config.get(CONF_REPLACEMENT_RULES, [])),
         date_normalizer=parse_date_normalizer(raw_config),
@@ -100,7 +101,7 @@ def serializable_config(raw_config: dict[str, Any]) -> dict[str, Any]:
     config = parse_proxy_config(raw_config)
     return {
         CONF_NAME: config.name,
-        CONF_FINAL_TTS_ENTITY: config.final_tts_entity,
+        CONF_TARGET_TTS_ENTITY: config.target_tts_entity,
         CONF_OUTPUT_LANGUAGE: config.output_language,
         CONF_REPLACEMENT_RULES: serializable_replacement_rules(config.rules),
         CONF_DATE_NORMALIZER_ENABLED: config.date_normalizer.enabled,
@@ -133,6 +134,7 @@ def serializable_replacement_rules(
     """Return Replacement Rules using only current UI field names."""
     return [
         {
+            RULE_NAME: rule.name,
             RULE_DISABLED: not rule.enabled,
             RULE_MODE: rule.mode.value,
             RULE_FIND: rule.find,
@@ -156,6 +158,7 @@ def _form_rule_defaults(raw_rule: dict[str, Any]) -> dict[str, Any]:
         case_sensitive = not bool(raw_rule.get(RULE_IGNORE_CASE, True))
 
     return {
+        RULE_NAME: str(raw_rule.get(RULE_NAME, "") or "").strip(),
         RULE_DISABLED: disabled,
         RULE_MODE: str(raw_rule.get(RULE_MODE) or RULE_MODE_LITERAL),
         RULE_FIND: str(raw_rule.get(RULE_FIND, "")),

@@ -20,7 +20,7 @@ from .const import (
     CONF_DATE_LOCALE,
     CONF_DATE_NORMALIZER_ENABLED,
     CONF_DATE_RENDERER,
-    CONF_FINAL_TTS_ENTITY,
+    CONF_TARGET_TTS_ENTITY,
     CONF_MAX_BUFFER_CHARS,
     CONF_NUMBER_NORMALIZER_ENABLED,
     CONF_NUMBER_SPELLOUT_LANGUAGE,
@@ -40,6 +40,7 @@ from .const import (
     RULE_MODE,
     RULE_MODE_LITERAL,
     RULE_MODE_REGEX,
+    RULE_NAME,
     RULE_REPLACE,
 )
 from .date_normalizer import (
@@ -78,14 +79,14 @@ class TtsProxyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            errors = _validate_final_tts_entity(self.hass, user_input)
+            errors = _validate_target_tts_entity(self.hass, user_input)
             if not errors:
                 self._partial_config = dict(user_input)
                 return await self.async_step_details()
 
         return self.async_show_form(
             step_id="user",
-            data_schema=_final_entity_schema(user_input),
+            data_schema=_target_entity_schema(user_input),
             errors=errors,
         )
 
@@ -110,7 +111,7 @@ class TtsProxyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="details",
             data_schema=_details_schema(
                 self.hass,
-                partial_config[CONF_FINAL_TTS_ENTITY],
+                partial_config[CONF_TARGET_TTS_ENTITY],
                 user_input,
             ),
             errors=errors,
@@ -142,12 +143,12 @@ class TtsProxyOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Manage display name and Final TTS Entity options."""
+        """Manage display name and Target TTS Entity options."""
         current = merged_entry_config(self._entry)
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            errors = _validate_final_tts_entity(self.hass, user_input)
+            errors = _validate_target_tts_entity(self.hass, user_input)
             if not errors:
                 self._partial_config = {
                     **current,
@@ -157,7 +158,7 @@ class TtsProxyOptionsFlow(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="init",
-            data_schema=_final_entity_schema(
+            data_schema=_target_entity_schema(
                 current if user_input is None else user_input
             ),
             errors=errors,
@@ -181,7 +182,7 @@ class TtsProxyOptionsFlow(config_entries.OptionsFlow):
             step_id="details",
             data_schema=_details_schema(
                 self.hass,
-                partial_config[CONF_FINAL_TTS_ENTITY],
+                partial_config[CONF_TARGET_TTS_ENTITY],
                 partial_config if user_input is None else user_input,
             ),
             errors=errors,
@@ -189,8 +190,8 @@ class TtsProxyOptionsFlow(config_entries.OptionsFlow):
         )
 
 
-def _final_entity_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
-    """Build the display name and Final TTS Entity schema."""
+def _target_entity_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
+    """Build the display name and Target TTS Entity schema."""
     defaults = defaults or {}
     return vol.Schema(
         {
@@ -198,8 +199,8 @@ def _final_entity_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
                 CONF_NAME, default=defaults.get(CONF_NAME, DEFAULT_NAME)
             ): selector.TextSelector(),
             vol.Required(
-                CONF_FINAL_TTS_ENTITY,
-                default=defaults.get(CONF_FINAL_TTS_ENTITY),
+                CONF_TARGET_TTS_ENTITY,
+                default=defaults.get(CONF_TARGET_TTS_ENTITY),
             ): selector.EntitySelector(
                 selector.EntitySelectorConfig(filter={"domain": "tts"})
             ),
@@ -209,12 +210,12 @@ def _final_entity_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
 
 def _details_schema(
     hass: HomeAssistant,
-    final_tts_entity: str,
+    target_tts_entity: str,
     defaults: dict[str, Any] | None = None,
 ) -> vol.Schema:
     """Build the Output Language, Replacement Rules, and buffer schema."""
     defaults = form_defaults(defaults)
-    languages = _supported_languages(hass, final_tts_entity)
+    languages = _supported_languages(hass, target_tts_entity)
     language_default = defaults.get(CONF_OUTPUT_LANGUAGE)
     if language_default not in languages:
         language_default = languages[0] if languages else ""
@@ -259,8 +260,14 @@ def _details_schema(
             ): selector.ObjectSelector(
                 selector.ObjectSelectorConfig(
                     multiple=True,
-                    label_field=RULE_FIND,
+                    label_field=RULE_NAME,
+                    description_field=RULE_FIND,
                     fields={
+                        RULE_NAME: {
+                            "label": "Name",
+                            "required": False,
+                            "selector": selector.TextSelector(),
+                        },
                         RULE_DISABLED: {
                             "label": "Disabled",
                             "required": False,
@@ -362,15 +369,15 @@ def _details_schema(
     )
 
 
-def _validate_final_tts_entity(
+def _validate_target_tts_entity(
     hass: HomeAssistant,
     user_input: dict[str, Any],
 ) -> dict[str, str]:
-    """Validate the selected Final TTS Entity."""
+    """Validate the selected Target TTS Entity."""
     errors: dict[str, str] = {}
-    final_tts_entity = user_input.get(CONF_FINAL_TTS_ENTITY)
-    if not final_tts_entity or _get_final_tts_entity(hass, final_tts_entity) is None:
-        errors[CONF_FINAL_TTS_ENTITY] = "invalid_final_tts_entity"
+    target_tts_entity = user_input.get(CONF_TARGET_TTS_ENTITY)
+    if not target_tts_entity or _get_target_tts_entity(hass, target_tts_entity) is None:
+        errors[CONF_TARGET_TTS_ENTITY] = "invalid_target_tts_entity"
     return errors
 
 
@@ -380,6 +387,8 @@ def _date_input_format_options() -> list[dict[str, str]]:
         "ymd_dash": "YYYY-MM-DD",
         "dmy_dot": "DD.MM.YYYY",
         "dmy_dot_no_year": "DD.MM.",
+        "dmy_dot_spaced": "DD. MM. YYYY",
+        "dmy_dot_spaced_no_year": "DD. MM.",
         "dmy_month_name": "DD Month Name",
         "dmy_slash": "DD/MM/YYYY",
         "dmy_slash_no_year": "DD/MM",
@@ -426,23 +435,23 @@ def _validate_details(
         errors["base"] = "invalid_buffer_config"
         return errors
 
-    final_entity = _get_final_tts_entity(hass, config[CONF_FINAL_TTS_ENTITY])
-    if final_entity is None:
-        errors[CONF_FINAL_TTS_ENTITY] = "invalid_final_tts_entity"
+    target_entity = _get_target_tts_entity(hass, config[CONF_TARGET_TTS_ENTITY])
+    if target_entity is None:
+        errors[CONF_TARGET_TTS_ENTITY] = "invalid_target_tts_entity"
         return errors
 
-    if config[CONF_OUTPUT_LANGUAGE] not in final_entity.supported_languages:
+    if config[CONF_OUTPUT_LANGUAGE] not in target_entity.supported_languages:
         errors[CONF_OUTPUT_LANGUAGE] = "unsupported_output_language"
 
     return errors
 
 
 def _supported_languages(hass: HomeAssistant, entity_id: str) -> list[str]:
-    """Return supported languages for a valid Final TTS Entity."""
-    final_entity = _get_final_tts_entity(hass, entity_id)
-    if final_entity is None:
+    """Return supported languages for a valid Target TTS Entity."""
+    target_entity = _get_target_tts_entity(hass, entity_id)
+    if target_entity is None:
         return []
-    return list(final_entity.supported_languages or [])
+    return list(target_entity.supported_languages or [])
 
 
 def _default_number_spellout_language(
@@ -481,11 +490,11 @@ def _default_date_locale(
     return date_locales[0] if date_locales else ""
 
 
-def _get_final_tts_entity(
+def _get_target_tts_entity(
     hass: HomeAssistant,
     entity_id: str,
 ) -> TextToSpeechEntity | None:
-    """Return a valid non-proxy Final TTS Entity."""
+    """Return a valid non-proxy Target TTS Entity."""
     entity = get_engine_instance(hass, entity_id)
     if not isinstance(entity, TextToSpeechEntity):
         return None

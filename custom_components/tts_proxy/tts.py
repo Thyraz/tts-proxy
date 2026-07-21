@@ -34,7 +34,7 @@ async def async_setup_entry(
 
 
 class ProxyTextToSpeechEntity(TextToSpeechEntity):
-    """Proxy TTS Entity that normalizes text before final synthesis."""
+    """Proxy TTS Entity that processes text before synthesis."""
 
     _attr_has_entity_name = False
     _attr_should_poll = False
@@ -48,9 +48,9 @@ class ProxyTextToSpeechEntity(TextToSpeechEntity):
 
     @property
     def available(self) -> bool:
-        """Return if the proxy can reach its Final TTS Entity."""
-        final_entity = self._final_tts_entity
-        return final_entity is not None and final_entity.available
+        """Return if the proxy can reach its Target TTS Entity."""
+        target_entity = self._target_tts_entity
+        return target_entity is not None and target_entity.available
 
     @property
     def supported_languages(self) -> list[str]:
@@ -64,47 +64,47 @@ class ProxyTextToSpeechEntity(TextToSpeechEntity):
 
     @property
     def supported_options(self) -> list[str] | None:
-        """Return options supported by the Final TTS Entity."""
-        final_entity = self._final_tts_entity
-        if final_entity is None:
+        """Return options supported by the Target TTS Entity."""
+        target_entity = self._target_tts_entity
+        if target_entity is None:
             return []
-        return list(final_entity.supported_options or [])
+        return list(target_entity.supported_options or [])
 
     @property
     def default_options(self) -> dict[str, Any]:
-        """Return default options from the Final TTS Entity."""
-        final_entity = self._final_tts_entity
-        if final_entity is None:
+        """Return default options from the Target TTS Entity."""
+        target_entity = self._target_tts_entity
+        if target_entity is None:
             return {}
-        return dict(final_entity.default_options or {})
+        return dict(target_entity.default_options or {})
 
     @callback
     def async_get_supported_voices(self, language: str) -> list[Voice] | None:
-        """Return voices supported by the Final TTS Entity."""
-        final_entity = self._final_tts_entity
-        if final_entity is None:
+        """Return voices supported by the Target TTS Entity."""
+        target_entity = self._target_tts_entity
+        if target_entity is None:
             return None
-        return final_entity.async_get_supported_voices(self._config.output_language)
+        return target_entity.async_get_supported_voices(self._config.output_language)
 
     def async_supports_streaming_input(self) -> bool:
-        """Return if the Final TTS Entity supports streaming input."""
-        final_entity = self._final_tts_entity
-        return bool(final_entity and final_entity.async_supports_streaming_input())
+        """Return if the Target TTS Entity supports streaming input."""
+        target_entity = self._target_tts_entity
+        return bool(target_entity and target_entity.async_supports_streaming_input())
 
     async def async_added_to_hass(self) -> None:
-        """Track Final TTS Entity availability changes."""
+        """Track Target TTS Entity availability changes."""
         await super().async_added_to_hass()
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass,
-                [self._config.final_tts_entity],
-                self._async_final_entity_state_changed,
+                [self._config.target_tts_entity],
+                self._async_target_entity_state_changed,
             )
         )
 
     @callback
-    def _async_final_entity_state_changed(self, event: Event) -> None:
-        """Update state when Final TTS Entity availability changes."""
+    def _async_target_entity_state_changed(self, event: Event) -> None:
+        """Update state when Target TTS Entity availability changes."""
         self.async_write_ha_state()
 
     async def async_get_tts_audio(
@@ -113,29 +113,29 @@ class ProxyTextToSpeechEntity(TextToSpeechEntity):
         language: str,
         options: dict[str, Any],
     ) -> TtsAudioType:
-        """Generate one-shot speech through the Final TTS Entity."""
-        final_entity = self._require_final_tts_entity()
+        """Generate one-shot speech through the Target TTS Entity."""
+        target_entity = self._require_target_tts_entity()
         normalized = normalize_text(
             message,
             self._config.rules,
             self._config.number_normalizer,
             self._config.date_normalizer,
         )
-        return await final_entity.async_internal_get_tts_audio(
+        return await target_entity.async_internal_get_tts_audio(
             normalized,
             self._config.output_language,
-            self._delegate_options(final_entity, options),
+            self._delegate_options(target_entity, options),
         )
 
     async def async_stream_tts_audio(
         self,
         request: TTSAudioRequest,
     ) -> TTSAudioResponse:
-        """Generate streaming speech through the Final TTS Entity when possible."""
-        final_entity = self._require_final_tts_entity()
-        options = self._delegate_options(final_entity, request.options)
+        """Generate streaming speech through the Target TTS Entity when possible."""
+        target_entity = self._require_target_tts_entity()
+        options = self._delegate_options(target_entity, request.options)
 
-        if not final_entity.async_supports_streaming_input():
+        if not target_entity.async_supports_streaming_input():
             message = "".join([chunk async for chunk in request.message_gen])
             extension, data = await self.async_get_tts_audio(
                 message,
@@ -144,7 +144,7 @@ class ProxyTextToSpeechEntity(TextToSpeechEntity):
             )
             if extension is None or data is None:
                 raise HomeAssistantError(
-                    f"No TTS from {self._config.final_tts_entity} for normalized message"
+                    f"No TTS from {self._config.target_tts_entity} for processed message"
                 )
 
             async def data_gen() -> AsyncGenerator[bytes]:
@@ -160,7 +160,7 @@ class ProxyTextToSpeechEntity(TextToSpeechEntity):
             safety_tail_chars=self._config.safety_tail_chars,
             max_buffer_chars=self._config.max_buffer_chars,
         )
-        return await final_entity.internal_async_stream_tts_audio(
+        return await target_entity.internal_async_stream_tts_audio(
             TTSAudioRequest(
                 self._config.output_language,
                 options,
@@ -169,11 +169,11 @@ class ProxyTextToSpeechEntity(TextToSpeechEntity):
         )
 
     @property
-    def _final_tts_entity(self) -> TextToSpeechEntity | None:
-        """Return the configured Final TTS Entity if it is valid."""
+    def _target_tts_entity(self) -> TextToSpeechEntity | None:
+        """Return the configured Target TTS Entity if it is valid."""
         if not hasattr(self, "hass"):
             return None
-        engine = get_engine_instance(self.hass, self._config.final_tts_entity)
+        engine = get_engine_instance(self.hass, self._config.target_tts_entity)
         if not isinstance(engine, TextToSpeechEntity):
             return None
         platform = getattr(engine, "platform", None)
@@ -183,22 +183,22 @@ class ProxyTextToSpeechEntity(TextToSpeechEntity):
             return None
         return engine
 
-    def _require_final_tts_entity(self) -> TextToSpeechEntity:
-        """Return the Final TTS Entity or raise a clear runtime error."""
-        final_entity = self._final_tts_entity
-        if final_entity is None or not final_entity.available:
+    def _require_target_tts_entity(self) -> TextToSpeechEntity:
+        """Return the Target TTS Entity or raise a clear runtime error."""
+        target_entity = self._target_tts_entity
+        if target_entity is None or not target_entity.available:
             raise HomeAssistantError(
-                f"Final TTS Entity {self._config.final_tts_entity} is unavailable"
+                f"Target TTS Entity {self._config.target_tts_entity} is unavailable"
             )
-        return final_entity
+        return target_entity
 
     @staticmethod
     def _delegate_options(
-        final_entity: TextToSpeechEntity,
+        target_entity: TextToSpeechEntity,
         options: dict[str, Any] | None,
     ) -> dict[str, Any]:
-        """Merge Final TTS Entity defaults with call options."""
+        """Merge Target TTS Entity defaults with call options."""
         return {
-            **dict(final_entity.default_options or {}),
+            **dict(target_entity.default_options or {}),
             **dict(options or {}),
         }

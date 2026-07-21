@@ -17,6 +17,8 @@ from .const import (
     CONF_OUTPUT_LANGUAGE,
     DATE_INPUT_FORMAT_DMY_DOT,
     DATE_INPUT_FORMAT_DMY_DOT_NO_YEAR,
+    DATE_INPUT_FORMAT_DMY_DOT_SPACED,
+    DATE_INPUT_FORMAT_DMY_DOT_SPACED_NO_YEAR,
     DATE_INPUT_FORMAT_DMY_MONTH_NAME,
     DATE_INPUT_FORMAT_DMY_SLASH,
     DATE_INPUT_FORMAT_DMY_SLASH_NO_YEAR,
@@ -35,7 +37,9 @@ _DAY_RE = r"(?:[12]\d|3[01]|0?[1-9])"
 _MONTH_RE = r"(?:1[0-2]|0?[1-9])"
 _SUPPORTED_INPUT_FORMATS = (
     DATE_INPUT_FORMAT_DMY_DOT,
+    DATE_INPUT_FORMAT_DMY_DOT_SPACED,
     DATE_INPUT_FORMAT_DMY_DOT_NO_YEAR,
+    DATE_INPUT_FORMAT_DMY_DOT_SPACED_NO_YEAR,
     DATE_INPUT_FORMAT_DMY_MONTH_NAME,
     DATE_INPUT_FORMAT_DMY_SLASH,
     DATE_INPUT_FORMAT_DMY_SLASH_NO_YEAR,
@@ -56,6 +60,15 @@ _DOT_DMY_RE = re.compile(
     rf"(?P<day>{_DAY_RE})\.(?P<month>{_MONTH_RE})\.(?P<year>{_FULL_YEAR_RE})"
 )
 _DOT_DMY_NO_YEAR_RE = re.compile(rf"(?P<day>{_DAY_RE})\.(?P<month>{_MONTH_RE})\.")
+_DOT_DMY_SPACED_RE = re.compile(
+    rf"(?P<day>{_DAY_RE})\.\s+(?P<month>{_MONTH_RE})\.\s*(?P<year>{_FULL_YEAR_RE})"
+)
+_DOT_DMY_SPACED_NO_YEAR_RE = re.compile(
+    rf"(?P<day>{_DAY_RE})\.\s+(?P<month>{_MONTH_RE})\."
+)
+_DOT_DMY_NO_YEAR_CANDIDATE_RE = re.compile(
+    rf"(?P<day>{_DAY_RE})\.\s*(?P<month>{_MONTH_RE})\."
+)
 _SLASH_DMY_RE = re.compile(
     rf"(?P<day>{_DAY_RE})/(?P<month>{_MONTH_RE})/(?P<year>{_FULL_YEAR_RE})"
 )
@@ -117,7 +130,23 @@ _MDY_MONTH_NAME_RE = re.compile(
 _OPENING_BOUNDARY_CHARS = "([{\"\u201e\u201c'"
 _CLOSING_BOUNDARY_CHARS = ")]}\"'\u201c\u201d"
 _SENTENCE_BOUNDARY_CHARS = ".,;:!?"
-_DATIVE_DATE_PREPOSITIONS_DE = {"am", "dem", "vom", "zum"}
+_GERMAN_WEAK_NOMINATIVE_DATE_CONTEXT = {"der", "dieser", "jener", "welcher"}
+_GERMAN_WEAK_OBLIQUE_DATE_CONTEXT = {
+    "am",
+    "bis",
+    "dem",
+    "den",
+    "des",
+    "diesem",
+    "diesen",
+    "jenem",
+    "jenen",
+    "vom",
+    "welchem",
+    "welchen",
+    "zum",
+}
+_GERMAN_STRONG_DATIVE_DATE_CONTEXT = {"ab", "nach", "seit", "von", "vor"}
 _NUMERIC_FALLBACK_DATE_LOCALES = (
     "fr",
     "fr-FR",
@@ -192,8 +221,15 @@ class DateNormalizer:
             return _DASH_YMD_RE.sub(self._replace_numeric_match, text)
         if input_format == DATE_INPUT_FORMAT_DMY_DOT:
             return _DOT_DMY_RE.sub(self._replace_numeric_match, text)
+        if input_format == DATE_INPUT_FORMAT_DMY_DOT_SPACED:
+            return _DOT_DMY_SPACED_RE.sub(self._replace_numeric_match, text)
         if input_format == DATE_INPUT_FORMAT_DMY_DOT_NO_YEAR:
             return _DOT_DMY_NO_YEAR_RE.sub(self._replace_no_year_dot_match, text)
+        if input_format == DATE_INPUT_FORMAT_DMY_DOT_SPACED_NO_YEAR:
+            return _DOT_DMY_SPACED_NO_YEAR_RE.sub(
+                self._replace_no_year_dot_match,
+                text,
+            )
         if input_format == DATE_INPUT_FORMAT_DMY_SLASH:
             return _SLASH_DMY_RE.sub(self._replace_numeric_match, text)
         if input_format == DATE_INPUT_FORMAT_MDY_SLASH:
@@ -230,6 +266,8 @@ class DateNormalizer:
 
         parsed = _validated_date(int(match.group("day")), int(match.group("month")))
         if parsed is None:
+            return match.group(0)
+        if _has_adjacent_no_year_dot_date(match):
             return match.group(0)
 
         rendered = self._render(parsed, match.string, match.start())
@@ -350,6 +388,7 @@ def default_date_input_formats(locale: str) -> tuple[str, ...]:
     if language == "de":
         return (
             DATE_INPUT_FORMAT_DMY_DOT,
+            DATE_INPUT_FORMAT_DMY_DOT_SPACED,
             DATE_INPUT_FORMAT_DMY_DOT_NO_YEAR,
             DATE_INPUT_FORMAT_DMY_MONTH_NAME,
             DATE_INPUT_FORMAT_YMD_DASH,
@@ -408,7 +447,11 @@ def is_date_token_punctuation(text: str, index: int) -> bool:
     """Return if punctuation at index is part of a likely date token."""
     if index < 0 or index >= len(text) or text[index] != ".":
         return False
-    return _is_no_year_date_dot(text, index) or _is_day_month_name_dot(text, index)
+    return (
+        _is_no_year_date_dot(text, index)
+        or _is_spaced_dot_date_dot(text, index)
+        or _is_day_month_name_dot(text, index)
+    )
 
 
 def normalize_date_locale(locale: str) -> str:
@@ -483,6 +526,51 @@ def _should_preserve_no_year_date_dot(text: str, end: int) -> bool:
     return text[cursor].isupper()
 
 
+def _has_adjacent_no_year_dot_date(match: re.Match[str]) -> bool:
+    """Return if a no-year dot date is directly adjacent to another one."""
+    return _has_previous_adjacent_no_year_dot_date(
+        match.string,
+        match.start(),
+    ) or _has_next_adjacent_no_year_dot_date(match.string, match.end())
+
+
+def _has_previous_adjacent_no_year_dot_date(text: str, start: int) -> bool:
+    """Return if another no-year dot date ends before whitespace at start."""
+    cursor = start
+    while cursor > 0 and text[cursor - 1].isspace():
+        cursor -= 1
+
+    if cursor == start:
+        return False
+
+    for candidate in _DOT_DMY_NO_YEAR_CANDIDATE_RE.finditer(text, 0, cursor):
+        if candidate.end() == cursor and _valid_no_year_dot_candidate(candidate):
+            return True
+    return False
+
+
+def _has_next_adjacent_no_year_dot_date(text: str, end: int) -> bool:
+    """Return if another no-year dot date starts after whitespace at end."""
+    cursor = end
+    while cursor < len(text) and text[cursor].isspace():
+        cursor += 1
+
+    if cursor == end:
+        return False
+
+    candidate = _DOT_DMY_NO_YEAR_CANDIDATE_RE.match(text, cursor)
+    return bool(candidate and _valid_no_year_dot_candidate(candidate))
+
+
+def _valid_no_year_dot_candidate(match: re.Match[str]) -> bool:
+    """Return if a no-year dot candidate is a valid standalone date token."""
+    return (
+        _has_date_boundaries(match)
+        and _validated_date(int(match.group("day")), int(match.group("month")))
+        is not None
+    )
+
+
 def _is_no_year_date_dot(text: str, index: int) -> bool:
     """Return if a dot looks like the final dot in `DD.MM.`."""
     match = re.search(
@@ -492,6 +580,34 @@ def _is_no_year_date_dot(text: str, index: int) -> bool:
     if match is None or not _has_start_boundary(text, match.start()):
         return False
     return _validated_date(int(match.group("day")), int(match.group("month"))) is not None
+
+
+def _is_spaced_dot_date_dot(text: str, index: int) -> bool:
+    """Return if a dot looks like punctuation inside `DD. MM.`."""
+    day_match = re.search(rf"(?P<day>{_DAY_RE})$", text[:index])
+    if day_match is not None and _has_start_boundary(text, day_match.start()):
+        next_token = re.match(
+            rf"\s+(?P<month>{_MONTH_RE})\.(?:\s*{_FULL_YEAR_RE})?",
+            text[index + 1 :],
+        )
+        if next_token is not None and _validated_date(
+            int(day_match.group("day")),
+            int(next_token.group("month")),
+        ):
+            return True
+
+    month_match = re.search(
+        rf"(?P<day>{_DAY_RE})\.\s+(?P<month>{_MONTH_RE})$",
+        text[:index],
+    )
+    return bool(
+        month_match is not None
+        and _has_start_boundary(text, month_match.start())
+        and _validated_date(
+            int(month_match.group("day")),
+            int(month_match.group("month")),
+        )
+    )
 
 
 def _is_day_month_name_dot(text: str, index: int) -> bool:
@@ -524,7 +640,7 @@ def _render_german_date(
     converter: DateNumberConverter,
 ) -> str:
     """Render a German date with a curated month-name style."""
-    form = "dative" if _has_german_dative_date_context(text, start) else "standalone"
+    form = _german_date_context_form(text, start)
     parts = [
         _german_ordinal(parsed.day, form, converter),
         _DE_MONTHS_BY_NUMBER[parsed.month],
@@ -574,8 +690,12 @@ def _german_ordinal(
 ) -> str:
     """Return a German ordinal form for date rendering."""
     ordinal = converter(value, "de", "ordinal")
-    if form == "dative":
+    if form == "weak_nominative":
+        return ordinal
+    if form == "weak_oblique":
         return ordinal[:-1] + "en" if ordinal.endswith("e") else f"{ordinal}n"
+    if form == "strong_dative":
+        return ordinal[:-1] + "em" if ordinal.endswith("e") else f"{ordinal}m"
     return ordinal[:-1] + "er" if ordinal.endswith("e") else f"{ordinal}r"
 
 
@@ -600,11 +720,21 @@ def _english_year(year: int, converter: DateNumberConverter) -> str:
     return converter(year, "en", "year")
 
 
-def _has_german_dative_date_context(text: str, start: int) -> bool:
-    """Return if the German date follows a dative date preposition."""
+def _german_date_context_form(text: str, start: int) -> str:
+    """Return the German ordinal form implied by the immediate left context."""
     prefix = text[:start].rstrip()
     match = re.search(r"([A-Za-zÄÖÜäöüß]+)$", prefix)
-    return bool(match and match.group(1).casefold() in _DATIVE_DATE_PREPOSITIONS_DE)
+    if not match:
+        return "standalone"
+
+    previous_word = match.group(1).casefold()
+    if previous_word in _GERMAN_WEAK_NOMINATIVE_DATE_CONTEXT:
+        return "weak_nominative"
+    if previous_word in _GERMAN_WEAK_OBLIQUE_DATE_CONTEXT:
+        return "weak_oblique"
+    if previous_word in _GERMAN_STRONG_DATIVE_DATE_CONTEXT:
+        return "strong_dative"
+    return "standalone"
 
 
 def _language_from_locale(locale: str) -> str:

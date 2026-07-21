@@ -1,0 +1,3 @@
+# Direct Target TTS Entity Delegation
+
+The Proxy TTS Entity delegates directly to the configured Target TTS Entity after applying replacements, instead of creating a nested Home Assistant TTS media-source URL for the target entity. This keeps streaming possible by passing a normalized text stream directly into the Target TTS Entity's streaming API when it supports one, while avoiding double caching, awkward stream chaining, and harder cycle detection through Home Assistant's TTS manager. The proxy reports streaming support only when the configured Target TTS Entity supports streaming; otherwise it uses full-message normalization and synthesis.

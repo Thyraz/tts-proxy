@@ -1,3 +1,0 @@
-# Direct Final TTS Entity Delegation
-
-The Proxy TTS Entity delegates directly to the configured Final TTS Entity after applying replacements, instead of creating a nested Home Assistant TTS media-source URL for the final entity. This keeps streaming possible by passing a normalized text stream directly into the Final TTS Entity's streaming API when it supports one, while avoiding double caching, awkward stream chaining, and harder cycle detection through Home Assistant's TTS manager. The proxy reports streaming support only when the configured Final TTS Entity supports streaming; otherwise it uses full-message normalization and synthesis.

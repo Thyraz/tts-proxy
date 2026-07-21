@@ -4,15 +4,15 @@
     "step": {
       "user": {
         "title": "Create TTS Proxy",
-        "description": "Choose the TTS entity that should receive normalized text.",
+        "description": "Choose the target TTS entity that should receive processed text.",
         "data": {
           "name": "Name",
-          "final_tts_entity": "Final TTS Entity"
+          "target_tts_entity": "Target TTS Entity"
         }
       },
       "details": {
         "title": "Configure TTS Proxy",
-        "description": "Choose the output language supported by the selected Final TTS Entity, then configure replacements, date normalization, number spellout, and streaming buffer settings.",
+        "description": "Choose the output language supported by the selected Target TTS Entity, then configure user-defined replacements, date detection, number detection, and streaming buffer settings.",
         "data": {
           "output_language": "Output Language",
           "replacement_rules": "Replacement Rules",
@@ -27,13 +27,13 @@
           "preview_text": "Preview Input"
         },
         "data_description": {
-          "preview_text": "Enter sample text to preview the normalized text that would be sent to the Final TTS Entity."
+          "preview_text": "Enter sample text to preview the processed text that would be sent to the Target TTS Entity."
         }
       }
     },
     "error": {
-      "invalid_final_tts_entity": "Select a non-proxy TTS entity.",
-      "unsupported_output_language": "The selected Final TTS Entity does not support this Output Language.",
+      "invalid_target_tts_entity": "Select a non-proxy TTS entity.",
+      "unsupported_output_language": "The selected Target TTS Entity does not support this Output Language.",
       "invalid_rule": "One or more Replacement Rules are invalid.",
       "invalid_date_normalizer": "Select a supported Date Locale, Date Renderer, and at least one Date Input Format.",
       "invalid_number_normalizer": "Select a supported Number Spellout Language when the Number Normalizer is enabled.",
@@ -44,15 +44,15 @@
     "step": {
       "init": {
         "title": "Configure TTS Proxy",
-        "description": "Choose the TTS entity that should receive normalized text.",
+        "description": "Choose the target TTS entity that should receive processed text.",
         "data": {
           "name": "Name",
-          "final_tts_entity": "Final TTS Entity"
+          "target_tts_entity": "Target TTS Entity"
         }
       },
       "details": {
         "title": "Configure TTS Proxy Details",
-        "description": "Choose the output language supported by the selected Final TTS Entity, then configure replacements, date normalization, number spellout, and streaming buffer settings.",
+        "description": "Choose the output language supported by the selected Target TTS Entity, then configure user-defined replacements, date detection, number detection, and streaming buffer settings.",
         "data": {
           "output_language": "Output Language",
           "replacement_rules": "Replacement Rules",
@@ -67,13 +67,13 @@
           "preview_text": "Preview Input"
         },
         "data_description": {
-          "preview_text": "Enter sample text to preview the normalized text that would be sent to the Final TTS Entity."
+          "preview_text": "Enter sample text to preview the processed text that would be sent to the Target TTS Entity."
         }
       }
     },
     "error": {
-      "invalid_final_tts_entity": "Select a non-proxy TTS entity.",
-      "unsupported_output_language": "The selected Final TTS Entity does not support this Output Language.",
+      "invalid_target_tts_entity": "Select a non-proxy TTS entity.",
+      "unsupported_output_language": "The selected Target TTS Entity does not support this Output Language.",
       "invalid_rule": "One or more Replacement Rules are invalid.",
       "invalid_date_normalizer": "Select a supported Date Locale, Date Renderer, and at least one Date Input Format.",
       "invalid_number_normalizer": "Select a supported Number Spellout Language when the Number Normalizer is enabled.",
