@@ -94,9 +94,11 @@ def _fake_german_number(value: int | str, language: str) -> str:
         9: "neun",
         12: "zwölf",
         13: "dreizehn",
+        21: "einundzwanzig",
         30: "dreißig",
         53: "dreiundfünfzig",
         123: "einhundertdreiundzwanzig",
+        2026: "zweitausendsechsundzwanzig",
         "0.5": "null Komma fünf",
         "0.7": "null Komma sieben",
         "53.4": "dreiundfünfzig Komma vier",
@@ -111,6 +113,7 @@ def _fake_date_number(value: int, language: str, purpose: str) -> str:
         ("de", "ordinal", 5): "fünfte",
         ("de", "ordinal", 14): "vierzehnte",
         ("de", "ordinal", 15): "fünfzehnte",
+        ("de", "ordinal", 21): "einundzwanzigste",
         ("de", "ordinal", 23): "dreiundzwanzigste",
         ("de", "ordinal", 27): "siebenundzwanzigste",
         ("de", "year", 1984): "neunzehnhundertvierundachtzig",
@@ -607,6 +610,19 @@ class DateNormalizerTests(unittest.TestCase):
         self.assertEqual(
             normalizer.normalize("Termin 15. August."),
             "Termin fünfzehnter August.",
+        )
+
+    def test_month_name_date_inside_markdown_bold_is_normalized_before_numbers(
+        self,
+    ) -> None:
+        self.assertEqual(
+            normalize_text(
+                "**21.\u202fJuli\u202f2026**",
+                [],
+                _german_number_normalizer(),
+                _date_normalizer(input_formats=(DATE_INPUT_FORMAT_DMY_MONTH_NAME,)),
+            ),
+            "**einundzwanzigster Juli zweitausendsechsundzwanzig**",
         )
 
     def test_english_us_dates_render_month_first(self) -> None:

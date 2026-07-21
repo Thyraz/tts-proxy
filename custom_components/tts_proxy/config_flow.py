@@ -389,10 +389,10 @@ def _date_input_format_options() -> list[dict[str, str]]:
         "dmy_dot_no_year": "DD.MM.",
         "dmy_dot_spaced": "DD. MM. YYYY",
         "dmy_dot_spaced_no_year": "DD. MM.",
-        "dmy_month_name": "DD Month Name",
+        "dmy_month_name": "DD[.] Month Name [YYYY]",
         "dmy_slash": "DD/MM/YYYY",
         "dmy_slash_no_year": "DD/MM",
-        "mdy_month_name": "Month Name DD",
+        "mdy_month_name": "Month Name DD[,] [YYYY]",
         "mdy_slash": "MM/DD/YYYY",
         "mdy_slash_no_year": "MM/DD",
     }

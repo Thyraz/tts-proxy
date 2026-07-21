@@ -77,7 +77,7 @@ Two numeric No-Year Date candidates separated only by whitespace. This text is t
 _Avoid_: date range, date list
 
 **Date Boundary**:
-A text boundary that allows the Date Normalizer to treat neighboring characters as outside a date token. Starts, ends, whitespace including newlines, and selected surrounding punctuation are Date Boundaries; letters, digits, underscores, and structural characters inside versions, IPs, times, or units are not. For `DD.MM.` No-Year Dates, the final dot is part of the date token, but may be preserved as sentence punctuation when the date ends a sentence or line.
+A text boundary that allows the Date Normalizer to treat neighboring characters as outside a date token. Starts, ends, whitespace including newlines, Markdown emphasis wrappers, and selected surrounding punctuation are Date Boundaries; letters, digits, underscores inside words, and structural characters inside versions, IPs, times, or units are not. For `DD.MM.` No-Year Dates, the final dot is part of the date token, but may be preserved as sentence punctuation when the date ends a sentence or line.
 _Avoid_: normal punctuation
 
 **Date Locale**:

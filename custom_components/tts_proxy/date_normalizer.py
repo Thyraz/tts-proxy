@@ -130,6 +130,7 @@ _MDY_MONTH_NAME_RE = re.compile(
 _OPENING_BOUNDARY_CHARS = "([{\"\u201e\u201c'"
 _CLOSING_BOUNDARY_CHARS = ")]}\"'\u201c\u201d"
 _SENTENCE_BOUNDARY_CHARS = ".,;:!?"
+_MARKDOWN_EMPHASIS_CHARS = "*_"
 _GERMAN_WEAK_NOMINATIVE_DATE_CONTEXT = {"der", "dieser", "jener", "welcher"}
 _GERMAN_WEAK_OBLIQUE_DATE_CONTEXT = {
     "am",
@@ -498,7 +499,9 @@ def _has_start_boundary(text: str, start: int) -> bool:
     if start == 0:
         return True
     previous = text[start - 1]
-    return previous.isspace() or previous in _OPENING_BOUNDARY_CHARS
+    if previous.isspace() or previous in _OPENING_BOUNDARY_CHARS:
+        return True
+    return _has_markdown_emphasis_start_boundary(text, start)
 
 
 def _has_end_boundary(text: str, end: int) -> bool:
@@ -506,6 +509,46 @@ def _has_end_boundary(text: str, end: int) -> bool:
     if end >= len(text):
         return True
     next_char = text[end]
+    if (
+        next_char.isspace()
+        or next_char in _CLOSING_BOUNDARY_CHARS
+        or next_char in _SENTENCE_BOUNDARY_CHARS
+    ):
+        return True
+    return _has_markdown_emphasis_end_boundary(text, end)
+
+
+def _has_markdown_emphasis_start_boundary(text: str, start: int) -> bool:
+    """Return if a date starts after Markdown emphasis at a token boundary."""
+    cursor = start
+    while cursor > 0 and text[cursor - 1] in _MARKDOWN_EMPHASIS_CHARS:
+        cursor -= 1
+
+    if cursor == start:
+        return False
+    if cursor == 0:
+        return True
+
+    previous = text[cursor - 1]
+    return (
+        previous.isspace()
+        or previous in _OPENING_BOUNDARY_CHARS
+        or previous in _SENTENCE_BOUNDARY_CHARS
+    )
+
+
+def _has_markdown_emphasis_end_boundary(text: str, end: int) -> bool:
+    """Return if a date ends before Markdown emphasis at a token boundary."""
+    cursor = end
+    while cursor < len(text) and text[cursor] in _MARKDOWN_EMPHASIS_CHARS:
+        cursor += 1
+
+    if cursor == end:
+        return False
+    if cursor >= len(text):
+        return True
+
+    next_char = text[cursor]
     return (
         next_char.isspace()
         or next_char in _CLOSING_BOUNDARY_CHARS
