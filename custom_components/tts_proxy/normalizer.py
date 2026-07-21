@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, Iterable, Mapping
+from collections.abc import AsyncGenerator, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 import re
 from typing import Any
 
 from .const import (
+    CONF_NUMBER_NORMALIZER_ENABLED,
+    CONF_NUMBER_SPELLOUT_LANGUAGE,
+    CONF_REPLACEMENT_RULES,
     DEFAULT_MAX_BUFFER_CHARS,
     DEFAULT_SAFETY_TAIL_CHARS,
     RULE_ENABLED,
@@ -21,10 +24,22 @@ from .const import (
     RULE_MODE_REGEX,
     RULE_REPLACE,
 )
+from .date_normalizer import (
+    DateNormalizer,
+    is_date_token_punctuation,
+    parse_date_normalizer,
+)
 
 _CONTROL_TAG_RE = re.compile(r"(<[^>]*>|\[[^\]]*\])")
+_NUMERIC_TEXT_RE = re.compile(r"-?\d+(?:[.,]\d+)?")
 _SENTENCE_PUNCTUATION = ".!?:;"
 _CLOSING_PUNCTUATION = "\"')]}"
+_STRUCTURAL_PREFIX_CHARS = ".,:/+-"
+_STRUCTURAL_SUFFIX_CHARS = ":/+-"
+_MAX_INTEGER_DIGITS = 9
+_MAX_FRACTION_DIGITS = 6
+
+NumberConverter = Callable[[int | str, str], str]
 
 
 class RuleMode(StrEnum):
@@ -36,6 +51,10 @@ class RuleMode(StrEnum):
 
 class RuleValidationError(ValueError):
     """Raised when a Replacement Rule is invalid."""
+
+
+class NumberNormalizationError(ValueError):
+    """Raised when Number Normalizer configuration is invalid."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +135,89 @@ class ReplacementRule:
         return text.replace(self.find, self.replace)
 
 
+@dataclass(frozen=True, slots=True)
+class NumberNormalizer:
+    """A configured Number Normalizer."""
+
+    enabled: bool = False
+    language: str = ""
+    converter: NumberConverter | None = None
+
+    def normalize(self, text: str) -> str:
+        """Spell eligible numeric text as language-specific words."""
+        if not self.enabled or not self.language:
+            return text
+
+        return _NUMERIC_TEXT_RE.sub(self._replace_match, text)
+
+    @property
+    def _number_converter(self) -> NumberConverter:
+        """Return the configured converter or the num2words-backed converter."""
+        return self.converter or _spellout_number
+
+    def _replace_match(self, match: re.Match[str]) -> str:
+        """Replace one eligible numeric token."""
+        number_text = match.group(0)
+        if not _is_eligible_numeric_match(match):
+            return number_text
+
+        value = _number_value(number_text)
+        if value is None:
+            return number_text
+
+        try:
+            return str(self._number_converter(value, self.language))
+        except (
+            ArithmeticError,
+            ImportError,
+            NotImplementedError,
+            TypeError,
+            ValueError,
+        ):
+            return number_text
+
+
+def parse_number_normalizer(raw_config: Mapping[str, Any]) -> NumberNormalizer:
+    """Parse and validate Number Normalizer configuration."""
+    enabled = bool(raw_config.get(CONF_NUMBER_NORMALIZER_ENABLED, False))
+    language = str(raw_config.get(CONF_NUMBER_SPELLOUT_LANGUAGE, "") or "").strip()
+    if not enabled:
+        return NumberNormalizer(enabled=False, language=language)
+
+    if not language:
+        raise NumberNormalizationError("Number Spellout Language is required")
+
+    languages = supported_number_spellout_languages()
+    if not languages:
+        raise NumberNormalizationError("num2words is not available")
+    if language not in languages:
+        raise NumberNormalizationError(
+            f"Unsupported Number Spellout Language: {language}"
+        )
+
+    return NumberNormalizer(enabled=True, language=language)
+
+
+def supported_number_spellout_languages() -> tuple[str, ...]:
+    """Return languages supported by num2words."""
+    try:
+        from num2words import CONVERTER_CLASSES
+    except ImportError:
+        return ()
+
+    return tuple(sorted(str(language) for language in CONVERTER_CLASSES))
+
+
+def normalize_text_from_raw_config(text: str, raw_config: Mapping[str, Any]) -> str:
+    """Normalize text using raw Proxy Configuration data."""
+    return normalize_text(
+        text,
+        parse_rules(raw_config.get(CONF_REPLACEMENT_RULES, [])),
+        parse_number_normalizer(raw_config),
+        parse_date_normalizer(raw_config),
+    )
+
+
 def parse_rules(raw_rules: Any) -> tuple[ReplacementRule, ...]:
     """Parse and validate Replacement Rules from configuration."""
     if raw_rules in (None, ""):
@@ -136,7 +238,12 @@ def parse_rules(raw_rules: Any) -> tuple[ReplacementRule, ...]:
     return tuple(rules)
 
 
-def normalize_text(text: str, rules: Iterable[ReplacementRule]) -> str:
+def normalize_text(
+    text: str,
+    rules: Iterable[ReplacementRule],
+    number_normalizer: NumberNormalizer | None = None,
+    date_normalizer: DateNormalizer | None = None,
+) -> str:
     """Normalize text while preserving Provider Control Tags."""
     if not text:
         return text
@@ -145,12 +252,21 @@ def normalize_text(text: str, rules: Iterable[ReplacementRule]) -> str:
     cursor = 0
     for match in _CONTROL_TAG_RE.finditer(text):
         if match.start() > cursor:
-            parts.append(_apply_rules(text[cursor : match.start()], rules))
+            parts.append(
+                _normalize_segment(
+                    text[cursor : match.start()],
+                    rules,
+                    number_normalizer,
+                    date_normalizer,
+                )
+            )
         parts.append(match.group(0))
         cursor = match.end()
 
     if cursor < len(text):
-        parts.append(_apply_rules(text[cursor:], rules))
+        parts.append(
+            _normalize_segment(text[cursor:], rules, number_normalizer, date_normalizer)
+        )
 
     return "".join(parts)
 
@@ -158,6 +274,8 @@ def normalize_text(text: str, rules: Iterable[ReplacementRule]) -> str:
 async def normalize_stream(
     chunks: AsyncGenerator[str],
     rules: Iterable[ReplacementRule],
+    number_normalizer: NumberNormalizer | None = None,
+    date_normalizer: DateNormalizer | None = None,
     *,
     safety_tail_chars: int = DEFAULT_SAFETY_TAIL_CHARS,
     max_buffer_chars: int = DEFAULT_MAX_BUFFER_CHARS,
@@ -181,10 +299,15 @@ async def normalize_stream(
             segment = pending[:flush_at]
             pending = pending[flush_at:]
             if segment:
-                yield normalize_text(segment, materialized_rules)
+                yield normalize_text(
+                    segment,
+                    materialized_rules,
+                    number_normalizer,
+                    date_normalizer,
+                )
 
     if pending:
-        yield normalize_text(pending, materialized_rules)
+        yield normalize_text(pending, materialized_rules, number_normalizer, date_normalizer)
 
 
 def validate_streaming_buffer_config(
@@ -206,6 +329,101 @@ def _apply_rules(text: str, rules: Iterable[ReplacementRule]) -> str:
     for rule in rules:
         normalized = rule.apply(normalized)
     return normalized
+
+
+def _normalize_segment(
+    text: str,
+    rules: Iterable[ReplacementRule],
+    number_normalizer: NumberNormalizer | None,
+    date_normalizer: DateNormalizer | None,
+) -> str:
+    """Apply Replacement Rules, Date Normalizer, then Number Normalizer."""
+    normalized = _apply_rules(text, rules)
+    if date_normalizer is not None:
+        normalized = date_normalizer.normalize(normalized)
+    if number_normalizer is not None:
+        normalized = number_normalizer.normalize(normalized)
+    return normalized
+
+
+def _number_value(number_text: str) -> int | str | None:
+    """Return a converter value for eligible numeric text."""
+    unsigned = number_text[1:] if number_text.startswith("-") else number_text
+    separator = _decimal_separator(unsigned)
+
+    if separator is None:
+        if not _integer_part_is_eligible(unsigned):
+            return None
+        return int(number_text)
+
+    integer_part, fraction_part = unsigned.split(separator, 1)
+    if not _integer_part_is_eligible(integer_part):
+        return None
+    if len(fraction_part) > _MAX_FRACTION_DIGITS:
+        return None
+
+    return number_text.replace(",", ".")
+
+
+def _decimal_separator(unsigned_number_text: str) -> str | None:
+    """Return the single decimal separator in unsigned text if present."""
+    if "." in unsigned_number_text and "," in unsigned_number_text:
+        return None
+    if "." in unsigned_number_text:
+        return "."
+    if "," in unsigned_number_text:
+        return ","
+    return None
+
+
+def _integer_part_is_eligible(integer_part: str) -> bool:
+    """Return if an integer part is safe to spell out."""
+    if not integer_part:
+        return False
+    if len(integer_part) > _MAX_INTEGER_DIGITS:
+        return False
+    if len(integer_part) > 1 and integer_part.startswith("0"):
+        return False
+    return True
+
+
+def _is_eligible_numeric_match(match: re.Match[str]) -> bool:
+    """Return if a numeric regex match is structurally safe to spell out."""
+    text = match.string
+    start = match.start()
+    end = match.end()
+
+    if start > 0:
+        previous = text[start - 1]
+        if (
+            previous.isalnum()
+            or previous == "_"
+            or previous in _STRUCTURAL_PREFIX_CHARS
+        ):
+            return False
+
+    if end < len(text):
+        next_char = text[end]
+        if (
+            next_char.isalnum()
+            or next_char == "_"
+            or next_char in _STRUCTURAL_SUFFIX_CHARS
+        ):
+            return False
+        if next_char in ".," and end + 1 < len(text) and text[end + 1].isdigit():
+            return False
+
+    return True
+
+
+def _spellout_number(value: int | str, language: str) -> str:
+    """Spell out a number with num2words."""
+    try:
+        from num2words import num2words
+    except ImportError as err:
+        raise NumberNormalizationError("num2words is not available") from err
+
+    return str(num2words(value, lang=language))
 
 
 def _next_flush_index(
@@ -240,6 +458,10 @@ def _find_sentence_boundary(text: str, protected_start: int) -> int | None:
             continue
 
         if _is_decimal_separator(text, index):
+            index += 1
+            continue
+
+        if is_date_token_punctuation(text, index):
             index += 1
             continue
 

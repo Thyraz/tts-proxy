@@ -7,23 +7,33 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.components import websocket_api
 from homeassistant.components.tts import TextToSpeechEntity
 from homeassistant.components.tts.helper import get_engine_instance
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 
-from .config import merged_entry_config, serializable_config
+from .config import form_defaults, merged_entry_config, serializable_config
 from .const import (
+    CONF_DATE_INPUT_FORMATS,
+    CONF_DATE_LOCALE,
+    CONF_DATE_NORMALIZER_ENABLED,
+    CONF_DATE_RENDERER,
     CONF_FINAL_TTS_ENTITY,
     CONF_MAX_BUFFER_CHARS,
+    CONF_NUMBER_NORMALIZER_ENABLED,
+    CONF_NUMBER_SPELLOUT_LANGUAGE,
     CONF_OUTPUT_LANGUAGE,
+    CONF_PREVIEW_TEXT,
     CONF_REPLACEMENT_RULES,
     CONF_SAFETY_TAIL_CHARS,
     DEFAULT_MAX_BUFFER_CHARS,
     DEFAULT_NAME,
     DEFAULT_SAFETY_TAIL_CHARS,
     DOMAIN,
+    MAX_PREVIEW_TEXT_CHARS,
+    PREVIEW_NAME,
     RULE_DISABLED,
     RULE_FIND,
     RULE_CASE_SENSITIVE,
@@ -32,7 +42,22 @@ from .const import (
     RULE_MODE_REGEX,
     RULE_REPLACE,
 )
-from .normalizer import RuleValidationError
+from .date_normalizer import (
+    DateNormalizationError,
+    default_date_input_formats,
+    default_date_locale,
+    default_date_renderer,
+    supported_date_input_formats,
+    supported_date_locales,
+    supported_date_renderers,
+)
+from .normalizer import (
+    NumberNormalizationError,
+    RuleValidationError,
+    normalize_text_from_raw_config,
+    supported_number_spellout_languages,
+)
+from .preview import preview_event_payload
 
 
 class TtsProxyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -40,6 +65,11 @@ class TtsProxyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
     _partial_config: dict[str, Any]
+
+    @staticmethod
+    async def async_setup_preview(hass: HomeAssistant) -> None:
+        """Set up the Normalization Preview websocket API."""
+        websocket_api.async_register_command(hass, ws_start_preview)
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -84,6 +114,7 @@ class TtsProxyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 user_input,
             ),
             errors=errors,
+            preview=PREVIEW_NAME,
         )
 
     @staticmethod
@@ -102,6 +133,11 @@ class TtsProxyOptionsFlow(config_entries.OptionsFlow):
         """Initialize the options flow."""
         self._entry = entry
         self._partial_config: dict[str, Any] = {}
+
+    @staticmethod
+    async def async_setup_preview(hass: HomeAssistant) -> None:
+        """Set up the Normalization Preview websocket API."""
+        websocket_api.async_register_command(hass, ws_start_preview)
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -149,6 +185,7 @@ class TtsProxyOptionsFlow(config_entries.OptionsFlow):
                 partial_config if user_input is None else user_input,
             ),
             errors=errors,
+            preview=PREVIEW_NAME,
         )
 
 
@@ -176,11 +213,33 @@ def _details_schema(
     defaults: dict[str, Any] | None = None,
 ) -> vol.Schema:
     """Build the Output Language, Replacement Rules, and buffer schema."""
-    defaults = defaults or {}
+    defaults = form_defaults(defaults)
     languages = _supported_languages(hass, final_tts_entity)
     language_default = defaults.get(CONF_OUTPUT_LANGUAGE)
     if language_default not in languages:
         language_default = languages[0] if languages else ""
+
+    number_languages = list(supported_number_spellout_languages())
+    number_language_default = _default_number_spellout_language(
+        defaults,
+        language_default,
+        number_languages,
+    )
+    date_locales = list(supported_date_locales())
+    date_locale_default = _default_date_locale(
+        defaults,
+        language_default,
+        number_language_default,
+        date_locales,
+    )
+    date_renderer_default = defaults.get(
+        CONF_DATE_RENDERER,
+        default_date_renderer(date_locale_default),
+    )
+    date_input_formats_default = defaults.get(
+        CONF_DATE_INPUT_FORMATS,
+        list(default_date_input_formats(date_locale_default)),
+    )
 
     return vol.Schema(
         {
@@ -235,6 +294,53 @@ def _details_schema(
                 )
             ),
             vol.Optional(
+                CONF_DATE_NORMALIZER_ENABLED,
+                default=defaults.get(CONF_DATE_NORMALIZER_ENABLED, False),
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_DATE_LOCALE,
+                default=date_locale_default,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=date_locales,
+                    mode="dropdown",
+                    sort=True,
+                )
+            ),
+            vol.Optional(
+                CONF_DATE_RENDERER,
+                default=date_renderer_default,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=_date_renderer_options(),
+                    mode="dropdown",
+                )
+            ),
+            vol.Optional(
+                CONF_DATE_INPUT_FORMATS,
+                default=date_input_formats_default,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=_date_input_format_options(),
+                    multiple=True,
+                    mode="list",
+                )
+            ),
+            vol.Optional(
+                CONF_NUMBER_NORMALIZER_ENABLED,
+                default=defaults.get(CONF_NUMBER_NORMALIZER_ENABLED, False),
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_NUMBER_SPELLOUT_LANGUAGE,
+                default=number_language_default,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=number_languages,
+                    mode="dropdown",
+                    sort=True,
+                )
+            ),
+            vol.Optional(
                 CONF_SAFETY_TAIL_CHARS,
                 default=defaults.get(
                     CONF_SAFETY_TAIL_CHARS, DEFAULT_SAFETY_TAIL_CHARS
@@ -248,6 +354,10 @@ def _details_schema(
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=1, max=10000, mode="box")
             ),
+            vol.Optional(
+                CONF_PREVIEW_TEXT,
+                default=defaults.get(CONF_PREVIEW_TEXT, ""),
+            ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
         }
     )
 
@@ -264,6 +374,37 @@ def _validate_final_tts_entity(
     return errors
 
 
+def _date_input_format_options() -> list[dict[str, str]]:
+    """Return Date Input Format selector options."""
+    labels = {
+        "ymd_dash": "YYYY-MM-DD",
+        "dmy_dot": "DD.MM.YYYY",
+        "dmy_dot_no_year": "DD.MM.",
+        "dmy_month_name": "DD Month Name",
+        "dmy_slash": "DD/MM/YYYY",
+        "dmy_slash_no_year": "DD/MM",
+        "mdy_month_name": "Month Name DD",
+        "mdy_slash": "MM/DD/YYYY",
+        "mdy_slash_no_year": "MM/DD",
+    }
+    return [
+        {"value": value, "label": labels[value]}
+        for value in supported_date_input_formats()
+    ]
+
+
+def _date_renderer_options() -> list[dict[str, str]]:
+    """Return Date Renderer selector options."""
+    labels = {
+        "curated": "Curated German/English",
+        "numeric_fallback": "Numeric fallback",
+    }
+    return [
+        {"value": value, "label": labels[value]}
+        for value in supported_date_renderers()
+    ]
+
+
 def _validate_details(
     hass: HomeAssistant,
     user_input: dict[str, Any],
@@ -274,6 +415,12 @@ def _validate_details(
         config = serializable_config(user_input)
     except RuleValidationError:
         errors[CONF_REPLACEMENT_RULES] = "invalid_rule"
+        return errors
+    except DateNormalizationError:
+        errors[CONF_DATE_LOCALE] = "invalid_date_normalizer"
+        return errors
+    except NumberNormalizationError:
+        errors[CONF_NUMBER_SPELLOUT_LANGUAGE] = "invalid_number_normalizer"
         return errors
     except ValueError:
         errors["base"] = "invalid_buffer_config"
@@ -298,6 +445,42 @@ def _supported_languages(hass: HomeAssistant, entity_id: str) -> list[str]:
     return list(final_entity.supported_languages or [])
 
 
+def _default_number_spellout_language(
+    defaults: dict[str, Any],
+    output_language: str,
+    number_languages: list[str],
+) -> str:
+    """Return the best default Number Spellout Language."""
+    configured = defaults.get(CONF_NUMBER_SPELLOUT_LANGUAGE)
+    if configured in number_languages:
+        return configured
+
+    normalized_output = str(output_language or "").replace("-", "_")
+    for candidate in (normalized_output, normalized_output[:2]):
+        if candidate in number_languages:
+            return candidate
+
+    return number_languages[0] if number_languages else ""
+
+
+def _default_date_locale(
+    defaults: dict[str, Any],
+    output_language: str,
+    number_language: str,
+    date_locales: list[str],
+) -> str:
+    """Return a Date Locale default present in selector options."""
+    candidates = (
+        defaults.get(CONF_DATE_LOCALE),
+        default_date_locale(output_language, number_language),
+        default_date_locale("", number_language),
+    )
+    for candidate in candidates:
+        if candidate in date_locales:
+            return candidate
+    return date_locales[0] if date_locales else ""
+
+
 def _get_final_tts_entity(
     hass: HomeAssistant,
     entity_id: str,
@@ -312,3 +495,73 @@ def _get_final_tts_entity(
         return None
 
     return entity
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{PREVIEW_NAME}/start_preview",
+        vol.Required("flow_id"): str,
+        vol.Required("flow_type"): vol.Any("config_flow", "options_flow"),
+        vol.Required("user_input"): dict,
+    }
+)
+@callback
+def ws_start_preview(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Generate a Normalization Preview for current form values."""
+    user_input = dict(msg["user_input"])
+    preview_text = str(user_input.get(CONF_PREVIEW_TEXT, "") or "")
+    if len(preview_text) > MAX_PREVIEW_TEXT_CHARS:
+        _send_preview_input_error(
+            connection,
+            msg,
+            {
+                CONF_PREVIEW_TEXT: (
+                    f"Preview input must be {MAX_PREVIEW_TEXT_CHARS} characters or less"
+                )
+            },
+        )
+        return
+
+    try:
+        normalized = normalize_text_from_raw_config(preview_text, user_input)
+    except (
+        DateNormalizationError,
+        NumberNormalizationError,
+        RuleValidationError,
+        ValueError,
+    ) as err:
+        _send_preview_input_error(connection, msg, {"base": str(err)})
+        return
+
+    connection.send_result(msg["id"])
+    connection.send_message(
+        websocket_api.event_message(
+            msg["id"],
+            preview_event_payload(preview_text, normalized),
+        )
+    )
+    connection.subscriptions[msg["id"]] = lambda: None
+
+
+@callback
+def _send_preview_input_error(
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+    errors: dict[str, str],
+) -> None:
+    """Send preview validation errors."""
+    connection.send_message(
+        {
+            "id": msg["id"],
+            "type": websocket_api.TYPE_RESULT,
+            "success": False,
+            "error": {
+                "code": "invalid_user_input",
+                "message": errors,
+            },
+        }
+    )

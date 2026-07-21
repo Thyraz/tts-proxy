@@ -2,9 +2,11 @@
   "domain": "tts_proxy",
   "name": "TTS Proxy",
   "dependencies": ["tts"],
+  "requirements": ["num2words==0.5.14"],
   "codeowners": [],
   "config_flow": true,
-  "documentation": "https://github.com/home-assistant/custom-components",
+  "documentation": "https://github.com/Thyraz/tts-proxy",
+  "issue_tracker": "https://github.com/Thyraz/tts-proxy/issues",
   "iot_class": "local_push",
   "version": "0.1.0"
 }

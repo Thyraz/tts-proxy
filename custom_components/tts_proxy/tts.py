@@ -115,7 +115,12 @@ class ProxyTextToSpeechEntity(TextToSpeechEntity):
     ) -> TtsAudioType:
         """Generate one-shot speech through the Final TTS Entity."""
         final_entity = self._require_final_tts_entity()
-        normalized = normalize_text(message, self._config.rules)
+        normalized = normalize_text(
+            message,
+            self._config.rules,
+            self._config.number_normalizer,
+            self._config.date_normalizer,
+        )
         return await final_entity.async_internal_get_tts_audio(
             normalized,
             self._config.output_language,
@@ -150,6 +155,8 @@ class ProxyTextToSpeechEntity(TextToSpeechEntity):
         normalized_stream = normalize_stream(
             request.message_gen,
             self._config.rules,
+            self._config.number_normalizer,
+            self._config.date_normalizer,
             safety_tail_chars=self._config.safety_tail_chars,
             max_buffer_chars=self._config.max_buffer_chars,
         )
