@@ -30,6 +30,7 @@ from .date_normalizer import (
     is_date_token_punctuation,
     parse_date_normalizer,
 )
+from .emoji_normalizer import EmojiNormalizer, parse_emoji_normalizer
 from .form_data import flatten_config_sections
 from .markdown_normalizer import (
     MarkdownCleanupNormalizer,
@@ -241,6 +242,7 @@ def normalize_text_from_raw_config(text: str, raw_config: Mapping[str, Any]) -> 
         text,
         parse_rules(raw_config.get(CONF_REPLACEMENT_RULES, [])),
         markdown_normalizer=parse_markdown_cleanup_normalizer(raw_config),
+        emoji_normalizer=parse_emoji_normalizer(raw_config),
         number_normalizer=parse_number_normalizer(raw_config),
         date_normalizer=parse_date_normalizer(raw_config),
     )
@@ -272,6 +274,7 @@ def normalize_text(
     number_normalizer: NumberNormalizer | None = None,
     date_normalizer: DateNormalizer | None = None,
     markdown_normalizer: MarkdownCleanupNormalizer | None = None,
+    emoji_normalizer: EmojiNormalizer | None = None,
 ) -> str:
     """Normalize text while preserving Provider Control Tags."""
     if not text:
@@ -289,6 +292,7 @@ def normalize_text(
             segment,
             number_normalizer,
             date_normalizer,
+            emoji_normalizer,
         ),
     )
 
@@ -318,6 +322,7 @@ async def normalize_stream(
     number_normalizer: NumberNormalizer | None = None,
     date_normalizer: DateNormalizer | None = None,
     markdown_normalizer: MarkdownCleanupNormalizer | None = None,
+    emoji_normalizer: EmojiNormalizer | None = None,
     *,
     safety_tail_chars: int = DEFAULT_SAFETY_TAIL_CHARS,
     max_buffer_chars: int = DEFAULT_MAX_BUFFER_CHARS,
@@ -347,6 +352,7 @@ async def normalize_stream(
                     markdown_normalizer=markdown_normalizer,
                     number_normalizer=number_normalizer,
                     date_normalizer=date_normalizer,
+                    emoji_normalizer=emoji_normalizer,
                 )
 
     if pending:
@@ -356,6 +362,7 @@ async def normalize_stream(
             markdown_normalizer=markdown_normalizer,
             number_normalizer=number_normalizer,
             date_normalizer=date_normalizer,
+            emoji_normalizer=emoji_normalizer,
         )
 
 
@@ -386,9 +393,12 @@ def _apply_date_and_number_normalizers(
     text: str,
     number_normalizer: NumberNormalizer | None,
     date_normalizer: DateNormalizer | None,
+    emoji_normalizer: EmojiNormalizer | None,
 ) -> str:
-    """Apply Date Normalizer, then Number Normalizer."""
+    """Apply Emoji Normalizer, Date Normalizer, then Number Normalizer."""
     normalized = text
+    if emoji_normalizer is not None:
+        normalized = emoji_normalizer.normalize(normalized)
     if date_normalizer is not None:
         normalized = date_normalizer.normalize(normalized)
     if number_normalizer is not None:

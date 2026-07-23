@@ -52,6 +52,14 @@
               "markdown_cleanup_enabled": "Subrules below are only applied if this global switch is enabled."
             }
           },
+          "emoji": {
+            "name": "Emoji Normalizer",
+            "data": {
+              "emoji_normalizer_enabled": "Enable Emoji Normalizer",
+              "emoji_handling": "Emoji Handling",
+              "emoji_language": "Emoji Language"
+            }
+          },
           "dates": {
             "name": "Date Normalizer",
             "data": {
@@ -82,6 +90,7 @@
       "invalid_target_tts_entity": "Select a non-proxy TTS entity.",
       "unsupported_output_language": "The selected Target TTS Entity does not support this Output Language.",
       "invalid_rule": "One or more Replacement Rules are invalid.",
+      "invalid_emoji_normalizer": "Select a supported Emoji Language when Spell out emoji is enabled.",
       "invalid_date_normalizer": "Select a supported Date Locale, Date Renderer, and at least one Date Input Format.",
       "invalid_number_normalizer": "Select a supported Number Spellout Language when the Number Normalizer is enabled.",
       "invalid_buffer_config": "Maximal Buffer Limit must be greater than Minimal Lookahead Buffer Length."
@@ -139,6 +148,14 @@
               "markdown_cleanup_enabled": "Subrules below are only applied if this global switch is enabled."
             }
           },
+          "emoji": {
+            "name": "Emoji Normalizer",
+            "data": {
+              "emoji_normalizer_enabled": "Enable Emoji Normalizer",
+              "emoji_handling": "Emoji Handling",
+              "emoji_language": "Emoji Language"
+            }
+          },
           "dates": {
             "name": "Date Normalizer",
             "data": {
@@ -169,6 +186,7 @@
       "invalid_target_tts_entity": "Select a non-proxy TTS entity.",
       "unsupported_output_language": "The selected Target TTS Entity does not support this Output Language.",
       "invalid_rule": "One or more Replacement Rules are invalid.",
+      "invalid_emoji_normalizer": "Select a supported Emoji Language when Spell out emoji is enabled.",
       "invalid_date_normalizer": "Select a supported Date Locale, Date Renderer, and at least one Date Input Format.",
       "invalid_number_normalizer": "Select a supported Number Spellout Language when the Number Normalizer is enabled.",
       "invalid_buffer_config": "Maximal Buffer Limit must be greater than Minimal Lookahead Buffer Length."

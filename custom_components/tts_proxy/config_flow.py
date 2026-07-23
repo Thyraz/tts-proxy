@@ -21,6 +21,9 @@ from .const import (
     CONF_DATE_LOCALE,
     CONF_DATE_NORMALIZER_ENABLED,
     CONF_DATE_RENDERER,
+    CONF_EMOJI_HANDLING,
+    CONF_EMOJI_LANGUAGE,
+    CONF_EMOJI_NORMALIZER_ENABLED,
     CONF_TARGET_TTS_ENTITY,
     CONF_MARKDOWN_CLEANUP_ENABLED,
     CONF_MARKDOWN_REMOVE_CODE_BLOCKS,
@@ -46,6 +49,8 @@ from .const import (
     DEFAULT_NAME,
     DEFAULT_SAFETY_TAIL_CHARS,
     DOMAIN,
+    EMOJI_HANDLING_REMOVE,
+    EMOJI_HANDLING_SPELLOUT,
     MAX_PREVIEW_TEXT_CHARS,
     PREVIEW_NAME,
     RULE_DISABLED,
@@ -57,6 +62,7 @@ from .const import (
     RULE_NAME,
     RULE_REPLACE,
     SECTION_DATES,
+    SECTION_EMOJI,
     SECTION_GENERAL,
     SECTION_MARKDOWN,
     SECTION_NUMBERS,
@@ -71,6 +77,11 @@ from .date_normalizer import (
     supported_date_input_formats,
     supported_date_locales,
     supported_date_renderers,
+)
+from .emoji_normalizer import (
+    EmojiNormalizationError,
+    default_emoji_language,
+    supported_emoji_languages,
 )
 from .form_data import flatten_config_sections
 from .normalizer import (
@@ -262,6 +273,12 @@ def _details_schema(
         CONF_DATE_INPUT_FORMATS,
         list(default_date_input_formats(date_locale_default)),
     )
+    emoji_languages = list(supported_emoji_languages())
+    emoji_language_default = _default_emoji_language(
+        defaults,
+        language_default,
+        emoji_languages,
+    )
 
     return vol.Schema(
         {
@@ -274,6 +291,11 @@ def _details_schema(
                 defaults
             ),
             vol.Required(SECTION_MARKDOWN): _markdown_section_schema(defaults),
+            vol.Required(SECTION_EMOJI): _emoji_section_schema(
+                emoji_languages,
+                emoji_language_default,
+                defaults,
+            ),
             vol.Required(SECTION_DATES): _date_section_schema(
                 date_locales,
                 date_locale_default,
@@ -452,6 +474,44 @@ def _markdown_section_schema(defaults: dict[str, Any]) -> Any:
     )
 
 
+def _emoji_section_schema(
+    emoji_languages: list[str],
+    emoji_language_default: str,
+    defaults: dict[str, Any],
+) -> Any:
+    """Return the Emoji Normalizer section schema."""
+    return form_section(
+        vol.Schema(
+            {
+                vol.Optional(
+                    CONF_EMOJI_NORMALIZER_ENABLED,
+                    default=defaults.get(CONF_EMOJI_NORMALIZER_ENABLED, False),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_EMOJI_HANDLING,
+                    default=defaults.get(CONF_EMOJI_HANDLING, EMOJI_HANDLING_SPELLOUT),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=_emoji_handling_options(),
+                        mode="dropdown",
+                    )
+                ),
+                vol.Optional(
+                    CONF_EMOJI_LANGUAGE,
+                    default=emoji_language_default,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=emoji_languages,
+                        mode="dropdown",
+                        sort=True,
+                    )
+                ),
+            }
+        ),
+        {"collapsed": True},
+    )
+
+
 def _date_section_schema(
     date_locales: list[str],
     date_locale_default: str,
@@ -592,6 +652,14 @@ def _date_renderer_options() -> list[dict[str, str]]:
     ]
 
 
+def _emoji_handling_options() -> list[dict[str, str]]:
+    """Return Emoji Handling selector options."""
+    return [
+        {"value": EMOJI_HANDLING_SPELLOUT, "label": "Spell out emoji"},
+        {"value": EMOJI_HANDLING_REMOVE, "label": "Remove emoji"},
+    ]
+
+
 def _validate_details(
     hass: HomeAssistant,
     user_input: dict[str, Any],
@@ -605,6 +673,9 @@ def _validate_details(
         return errors
     except DateNormalizationError:
         errors[CONF_DATE_LOCALE] = "invalid_date_normalizer"
+        return errors
+    except EmojiNormalizationError:
+        errors[CONF_EMOJI_LANGUAGE] = "invalid_emoji_normalizer"
         return errors
     except NumberNormalizationError:
         errors[CONF_NUMBER_SPELLOUT_LANGUAGE] = "invalid_number_normalizer"
@@ -648,6 +719,18 @@ def _default_number_spellout_language(
             return candidate
 
     return number_languages[0] if number_languages else ""
+
+
+def _default_emoji_language(
+    defaults: dict[str, Any],
+    output_language: str,
+    emoji_languages: list[str],
+) -> str:
+    """Return an Emoji Language default present in selector options."""
+    configured = defaults.get(CONF_EMOJI_LANGUAGE)
+    if configured in emoji_languages:
+        return configured
+    return default_emoji_language(output_language, emoji_languages)
 
 
 def _default_date_locale(
@@ -717,6 +800,7 @@ def ws_start_preview(
         normalized = normalize_text_from_raw_config(preview_text, user_input)
     except (
         DateNormalizationError,
+        EmojiNormalizationError,
         NumberNormalizationError,
         RuleValidationError,
         ValueError,

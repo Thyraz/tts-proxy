@@ -119,6 +119,7 @@ class ProxyTextToSpeechEntity(TextToSpeechEntity):
             message,
             self._config.rules,
             markdown_normalizer=self._config.markdown_normalizer,
+            emoji_normalizer=self._config.emoji_normalizer,
             number_normalizer=self._config.number_normalizer,
             date_normalizer=self._config.date_normalizer,
         )
@@ -157,6 +158,7 @@ class ProxyTextToSpeechEntity(TextToSpeechEntity):
             request.message_gen,
             self._config.rules,
             markdown_normalizer=self._config.markdown_normalizer,
+            emoji_normalizer=self._config.emoji_normalizer,
             number_normalizer=self._config.number_normalizer,
             date_normalizer=self._config.date_normalizer,
             safety_tail_chars=self._config.safety_tail_chars,

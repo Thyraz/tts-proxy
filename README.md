@@ -8,6 +8,7 @@ It can apply replacements based on:
 
 - user-defined rules using string literals or regular expressions
 - Markdown cleanup
+- emoji detection
 - date detection
 - number detection
 
@@ -40,7 +41,7 @@ Then restart Home Assistant.
 2. Add the **TTS Proxy** integration.
 3. Choose the target TTS entity that should receive the processed text.
 4. Select the output language.
-5. Add replacement rules, optionally name them, and enable Markdown cleanup, date detection, or number detection if needed.
+5. Add replacement rules, optionally name them, and enable Markdown cleanup, emoji handling, date detection, or number detection if needed.
 
 Use the preview area in the options dialog to test the processed text before saving.
 

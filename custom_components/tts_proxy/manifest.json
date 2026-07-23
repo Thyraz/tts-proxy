@@ -2,7 +2,7 @@
   "domain": "tts_proxy",
   "name": "TTS Proxy",
   "dependencies": ["tts"],
-  "requirements": ["num2words==0.5.14"],
+  "requirements": ["emoji==2.15.0", "num2words==0.5.14"],
   "codeowners": [],
   "config_flow": true,
   "documentation": "https://github.com/Thyraz/tts-proxy",

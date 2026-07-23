@@ -10,6 +10,9 @@ from .const import (
     CONF_DATE_LOCALE,
     CONF_DATE_NORMALIZER_ENABLED,
     CONF_DATE_RENDERER,
+    CONF_EMOJI_HANDLING,
+    CONF_EMOJI_LANGUAGE,
+    CONF_EMOJI_NORMALIZER_ENABLED,
     CONF_TARGET_TTS_ENTITY,
     CONF_MARKDOWN_CLEANUP_ENABLED,
     CONF_MARKDOWN_REMOVE_CODE_BLOCKS,
@@ -44,6 +47,7 @@ from .const import (
     RULE_NAME,
     RULE_REPLACE,
 )
+from .emoji_normalizer import EmojiNormalizer, parse_emoji_normalizer
 from .form_data import flatten_config_sections
 from .markdown_normalizer import (
     MarkdownCleanupNormalizer,
@@ -70,6 +74,7 @@ class ProxyConfig:
     output_language: str
     rules: tuple[ReplacementRule, ...]
     markdown_normalizer: MarkdownCleanupNormalizer
+    emoji_normalizer: EmojiNormalizer
     date_normalizer: DateNormalizer
     number_normalizer: NumberNormalizer
     safety_tail_chars: int
@@ -110,6 +115,7 @@ def parse_proxy_config(raw_config: dict[str, Any]) -> ProxyConfig:
         output_language=output_language,
         rules=parse_rules(raw_config.get(CONF_REPLACEMENT_RULES, [])),
         markdown_normalizer=parse_markdown_cleanup_normalizer(raw_config),
+        emoji_normalizer=parse_emoji_normalizer(raw_config),
         date_normalizer=parse_date_normalizer(raw_config),
         number_normalizer=parse_number_normalizer(raw_config),
         safety_tail_chars=safety_tail_chars,
@@ -152,6 +158,9 @@ def serializable_config(raw_config: dict[str, Any]) -> dict[str, Any]:
             config.markdown_normalizer.strip_strikethrough
         ),
         CONF_MARKDOWN_STRIP_IMAGES: config.markdown_normalizer.strip_images,
+        CONF_EMOJI_NORMALIZER_ENABLED: config.emoji_normalizer.enabled,
+        CONF_EMOJI_HANDLING: config.emoji_normalizer.handling.value,
+        CONF_EMOJI_LANGUAGE: config.emoji_normalizer.language,
         CONF_DATE_NORMALIZER_ENABLED: config.date_normalizer.enabled,
         CONF_DATE_LOCALE: config.date_normalizer.locale,
         CONF_DATE_RENDERER: config.date_normalizer.renderer,

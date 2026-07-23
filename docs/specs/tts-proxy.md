@@ -2,13 +2,13 @@
 
 ## Problem Statement
 
-Home Assistant users can choose from many text-to-speech engines, but TTS output is often poor for dates, numbers, decimals, units, abbreviations, and symbols. This is especially visible when an LLM Assist response is spoken in a language or style the TTS service does not handle well.
+Home Assistant users can choose from many text-to-speech engines, but TTS output is often poor for dates, numbers, decimals, units, abbreviations, emoji, and symbols. This is especially visible when an LLM Assist response is spoken in a language or style the TTS service does not handle well.
 
 Users need a caller-agnostic Home Assistant TTS entity that can be selected anywhere Home Assistant supports TTS, applies configured text processing to incoming text, and forwards the processed text to another TTS entity for synthesis. It must work for normal one-shot TTS and preserve streaming behavior when the target TTS entity supports streaming.
 
 ## Solution
 
-Build a custom Home Assistant integration that exposes one Proxy TTS Entity per config entry. The Proxy TTS Entity is selected like any other TTS entity. It receives text, applies configured Replacement Rules, optional Markdown Cleanup, optional Date Normalizer processing, and optional Number Normalizer processing, then delegates directly to its configured Target TTS Entity.
+Build a custom Home Assistant integration that exposes one Proxy TTS Entity per config entry. The Proxy TTS Entity is selected like any other TTS entity. It receives text, applies configured Replacement Rules, optional Markdown Cleanup, optional Emoji Normalizer processing, optional Date Normalizer processing, and optional Number Normalizer processing, then delegates directly to its configured Target TTS Entity.
 
 The Proxy Configuration requires:
 
@@ -17,6 +17,7 @@ The Proxy Configuration requires:
 - Output Language
 - Replacement Rules
 - Markdown Cleanup settings
+- Emoji Normalizer settings
 - Date Normalizer settings
 - Number Normalizer settings
 - Minimal Lookahead Buffer Length
@@ -69,8 +70,12 @@ For one-shot TTS, the proxy processes the full message and calls the Target TTS 
 39. As a Home Assistant user, I want Markdown links reduced to their visible text, so that URLs do not dominate spoken output when a useful label exists.
 40. As a Home Assistant user, I want table formatting removed without pretending to fully explain tables, so that TTS output is less confusing while remaining language-neutral.
 41. As a Home Assistant user, I want isolated square-bracket Provider Control Tags preserved even when Markdown Cleanup is enabled, so that tags such as `[whispers]` still reach the Target TTS Entity.
-42. As a future user, I want rule presets to be possible later, so that common language/use-case replacements can be added without changing the MVP model.
-43. As a future user, I want template replacement mode to be possible later, so that advanced dynamic normalization can be explored after streaming and caching semantics are designed.
+42. As a Home Assistant user, I want optional Emoji Normalizer processing, so that TTS services do not speak raw emoji poorly or ignore useful emoji intent.
+43. As a Home Assistant user, I want emoji removable, so that I can omit emoji from spoken responses when they are noise.
+44. As a Home Assistant user, I want emoji spoken as localized names, so that expressive LLM responses remain understandable in audio.
+45. As a Home Assistant user, I want Emoji Language configured separately, so that emoji name support can follow the emoji package's language coverage.
+46. As a future user, I want rule presets to be possible later, so that common language/use-case replacements can be added without changing the MVP model.
+47. As a future user, I want template replacement mode to be possible later, so that advanced dynamic normalization can be explored after streaming and caching semantics are designed.
 
 ## Implementation Decisions
 
@@ -103,18 +108,21 @@ For one-shot TTS, the proxy processes the full message and calls the Target TTS 
 - Each Replacement Rule may have an optional display-only name.
 - The options flow displays Replacement Rule rows with Name as the primary row text and Find as the secondary row text, following Home Assistant ObjectSelector constraints.
 - Regex rules must compile successfully before Proxy Configuration or Proxy Reconfiguration is saved.
-- Markdown Cleanup, date detection, and number detection are separate optional normalizers that run after user-defined Replacement Rules.
-- The normalization pipeline is Replacement Rules, then Markdown Cleanup, then Date Normalizer, then Number Normalizer.
+- Markdown Cleanup, emoji detection, date detection, and number detection are separate optional normalizers that run after user-defined Replacement Rules.
+- The normalization pipeline is Replacement Rules, then Markdown Cleanup, then Emoji Normalizer, then Date Normalizer, then Number Normalizer.
 - Markdown Cleanup is disabled by default. When enabled, emphasis, headings, list markers, table formatting, Markdown links, inline code backticks, blockquote markers, divider lines, strikethrough markers, and image syntax cleanup are enabled by default; plain URL removal and fenced code block removal are opt-in.
 - Markdown Cleanup is a conservative cleanup normalizer, not a semantic Markdown-to-speech renderer. It does not announce table structure, infer column meaning, parse HTML tags, or process reference-style links.
+- Emoji Normalizer is disabled by default. When enabled, Emoji Handling defaults to spellout and may alternatively remove emoji.
+- Emoji Normalizer uses a configured Emoji Language, defaulting from Output Language when supported and otherwise falling back to English when available.
+- Emoji spellout replaces emoji with localized names, falls back to English per emoji when a localized name is missing, leaves unknown emoji unchanged, and separates spoken names from surrounding text with commas.
 - The Number Normalizer spells simple leading-zero integers digit by digit, while one-separator decimals are normalized by removing leading integer zeroes and trailing fractional zeroes before spellout.
 - The German Date Renderer uses deterministic immediate left-context rules for clear article and preposition patterns, but does not use a general NLP parser.
 - Sloppy spaced numeric date formats such as `DD. MM. YYYY` are separate Date Input Formats. The German default enables the full-year spaced form, but not the no-year spaced form.
 - Numeric No-Year Date candidates separated only by whitespace are left unchanged; a visible separator or word between candidates allows normalization.
 - Locale-specific unit grammar remains user-defined through Replacement Rules.
-- The options flow groups settings into General, Replacement Rules, Markdown Cleanup, Date Normalizer, Number Normalizer, and Settings for TTS Streaming sections, then places Preview Input as the final top-level field directly before the Home Assistant preview output.
+- The options flow groups settings into General, Replacement Rules, Markdown Cleanup, Emoji Normalizer, Date Normalizer, Number Normalizer, and Settings for TTS Streaming sections, then places Preview Input as the final top-level field directly before the Home Assistant preview output.
 - The options flow includes a preview area that uses current unsaved settings and does not generate audio.
-- Preserve Provider Control Tags as opaque segments for Replacement Rules, Date Normalizer, and Number Normalizer. Markdown Cleanup may rewrite explicit Markdown constructs such as `[label](url)`, `![alt](url)`, and task-list markers, but isolated square-bracket spans and XML-like `<...>` spans remain protected.
+- Preserve Provider Control Tags as opaque segments for Replacement Rules, Emoji Normalizer, Date Normalizer, and Number Normalizer. Markdown Cleanup may rewrite explicit Markdown constructs such as `[label](url)`, `![alt](url)`, and task-list markers, but isolated square-bracket spans and XML-like `<...>` spans remain protected.
 - The streaming normalizer keeps a configurable Minimal Lookahead Buffer Length, defaulting to 64 characters.
 - The streaming normalizer keeps a configurable Maximal Buffer Limit, defaulting to 500 characters.
 - The streaming normalizer flushes preferentially at sentence-like punctuation boundaries before the Minimal Lookahead Buffer Length.
@@ -126,7 +134,7 @@ For one-shot TTS, the proxy processes the full message and calls the Target TTS 
 
 The primary test seam is the Proxy TTS Entity contract with fake Target TTS Entities. Tests should call the same one-shot and streaming methods Home Assistant will call, and assert the resulting text passed to the fake target entity plus the reported audio behavior.
 
-The supporting test seam is the pure text normalizer. It should be tested directly for dense edge cases that would be hard to observe through entity-level tests: chunk splits, Provider Control Tags, Markdown cleanup, punctuation boundaries, regex capture groups, disabled rules, case-sensitive behavior, date detection, number detection, and invalid regex validation.
+The supporting test seam is the pure text normalizer. It should be tested directly for dense edge cases that would be hard to observe through entity-level tests: chunk splits, Provider Control Tags, Markdown cleanup, emoji detection, punctuation boundaries, regex capture groups, disabled rules, case-sensitive behavior, date detection, number detection, and invalid regex validation.
 
 Good tests should verify externally visible behavior:
 
@@ -139,6 +147,7 @@ Good tests should verify externally visible behavior:
 - non-streaming Target TTS Entity receives full processed text
 - preview shows the processed text for current unsaved options
 - Markdown Cleanup preserves Provider Control Tags while simplifying configured Markdown syntax
+- Emoji Normalizer can remove emoji or spell them out with comma separators
 - Provider Control Tags are preserved and not modified by Replacement Rules
 - Passthrough TTS Options are accepted only when valid for the Target TTS Entity or HA preferred audio output
 - reconfiguration reloads capabilities while preserving proxy identity

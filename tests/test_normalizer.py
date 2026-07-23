@@ -16,6 +16,9 @@ from custom_components.tts_proxy.const import (
     CONF_DATE_LOCALE,
     CONF_DATE_NORMALIZER_ENABLED,
     CONF_DATE_RENDERER,
+    CONF_EMOJI_HANDLING,
+    CONF_EMOJI_LANGUAGE,
+    CONF_EMOJI_NORMALIZER_ENABLED,
     CONF_TARGET_TTS_ENTITY,
     CONF_MARKDOWN_CLEANUP_ENABLED,
     CONF_MARKDOWN_REMOVE_CODE_BLOCKS,
@@ -41,6 +44,8 @@ from custom_components.tts_proxy.const import (
     DATE_INPUT_FORMAT_YMD_DASH,
     DATE_RENDERER_CURATED,
     DATE_RENDERER_NUMERIC_FALLBACK,
+    EMOJI_HANDLING_REMOVE,
+    EMOJI_HANDLING_SPELLOUT,
     RULE_CASE_SENSITIVE,
     RULE_DISABLED,
     RULE_ENABLED,
@@ -52,6 +57,7 @@ from custom_components.tts_proxy.const import (
     RULE_NAME,
     RULE_REPLACE,
     SECTION_GENERAL,
+    SECTION_EMOJI,
     SECTION_MARKDOWN,
     SECTION_NUMBERS,
 )
@@ -61,6 +67,12 @@ from custom_components.tts_proxy.date_normalizer import (
     default_date_input_formats,
     default_date_renderer,
     parse_date_normalizer,
+)
+from custom_components.tts_proxy.emoji_normalizer import (
+    EmojiNormalizationError,
+    EmojiNormalizer,
+    default_emoji_language,
+    parse_emoji_normalizer,
 )
 from custom_components.tts_proxy.markdown_normalizer import MarkdownCleanupNormalizer
 from custom_components.tts_proxy.normalizer import (
@@ -141,6 +153,36 @@ def _fake_date_number(value: int, language: str, purpose: str) -> str:
     return values[(language, purpose, value)]
 
 
+def _fake_emoji_replacer(text, replace):
+    """Replace fake emoji test tokens."""
+    data = {
+        "😀": {"de": ":grinsendes_gesicht:", "en": ":grinning_face:"},
+        "🔥": {"de": ":feuer:", "en": ":fire:"},
+        "👍": {"en": ":thumbs_up:"},
+    }
+    return "".join(replace(char, data[char]) if char in data else char for char in text)
+
+
+class _FakeEmojiModule:
+    """Fake emoji package that requires explicit language loading."""
+
+    def __init__(self) -> None:
+        """Initialize fake package state."""
+        self.loaded_languages: list[str] = []
+        self.config = self
+
+    def load_language(self, language: str) -> None:
+        """Record a loaded language."""
+        self.loaded_languages.append(language)
+
+    def replace_emoji(self, text, replace):
+        """Replace one emoji using language data only after load_language."""
+        data = {"en": ":grinning_face_with_smiling_eyes:"}
+        if "de" in self.loaded_languages:
+            data["de"] = ":grinsendes_gesicht_mit_lachenden_augen:"
+        return text.replace("😄", replace("😄", data))
+
+
 def _german_number_normalizer() -> NumberNormalizer:
     """Return an enabled fake German Number Normalizer."""
     return NumberNormalizer(
@@ -153,6 +195,20 @@ def _german_number_normalizer() -> NumberNormalizer:
 def _markdown_normalizer(**kwargs: bool) -> MarkdownCleanupNormalizer:
     """Return an enabled Markdown Cleanup Normalizer."""
     return MarkdownCleanupNormalizer(enabled=True, **kwargs)
+
+
+def _emoji_normalizer(
+    *,
+    handling: str = EMOJI_HANDLING_SPELLOUT,
+    language: str = "de",
+) -> EmojiNormalizer:
+    """Return an enabled fake Emoji Normalizer."""
+    return EmojiNormalizer(
+        enabled=True,
+        handling=handling,
+        language=language,
+        replacer=_fake_emoji_replacer,
+    )
 
 
 def _date_normalizer(
@@ -465,6 +521,183 @@ class MarkdownCleanupTests(unittest.TestCase):
             ),
             "Termin einundzwanzigster Juli zweitausendsechsundzwanzig mit drei Punkten.",
         )
+
+
+class EmojiNormalizerTests(unittest.TestCase):
+    """Emoji Normalizer behavior."""
+
+    def test_disabled_normalizer_leaves_emoji_unchanged(self) -> None:
+        normalizer = EmojiNormalizer(
+            enabled=False,
+            language="de",
+            replacer=_fake_emoji_replacer,
+        )
+
+        self.assertEqual(
+            normalize_text("Gut 😀", [], emoji_normalizer=normalizer),
+            "Gut 😀",
+        )
+
+    def test_enabled_normalizer_leaves_text_without_emoji_unchanged(self) -> None:
+        text = "Hallo , Welt"
+
+        self.assertEqual(
+            normalize_text(text, [], emoji_normalizer=_emoji_normalizer()),
+            text,
+        )
+
+    def test_spells_emoji_with_comma_separators(self) -> None:
+        normalizer = _emoji_normalizer()
+
+        self.assertEqual(
+            normalize_text("Das ist gut 😀", [], emoji_normalizer=normalizer),
+            "Das ist gut, grinsendes gesicht",
+        )
+        self.assertEqual(
+            normalize_text("😀 Danke!", [], emoji_normalizer=normalizer),
+            "grinsendes gesicht, Danke!",
+        )
+        self.assertEqual(
+            normalize_text("Super 😀🔥", [], emoji_normalizer=normalizer),
+            "Super, grinsendes gesicht, feuer",
+        )
+
+    def test_real_emoji_backend_loads_selected_language_before_replacement(
+        self,
+    ) -> None:
+        fake_emoji = _FakeEmojiModule()
+        normalizer = EmojiNormalizer(
+            enabled=True,
+            handling=EMOJI_HANDLING_SPELLOUT,
+            language="de",
+        )
+
+        with patch.dict("sys.modules", {"emoji": fake_emoji}):
+            self.assertEqual(
+                normalize_text("Gut 😄", [], emoji_normalizer=normalizer),
+                "Gut, grinsendes gesicht mit lachenden augen",
+            )
+
+    def test_spellout_falls_back_to_english_when_language_name_is_missing(self) -> None:
+        normalizer = _emoji_normalizer(language="de")
+
+        self.assertEqual(
+            normalize_text("Gut 👍", [], emoji_normalizer=normalizer),
+            "Gut, thumbs up",
+        )
+
+    def test_remove_emoji_without_adding_punctuation(self) -> None:
+        normalizer = _emoji_normalizer(handling=EMOJI_HANDLING_REMOVE)
+
+        self.assertEqual(
+            normalize_text("Super 😀🔥!", [], emoji_normalizer=normalizer),
+            "Super!",
+        )
+        self.assertEqual(
+            normalize_text("A 😀 B", [], emoji_normalizer=normalizer),
+            "A B",
+        )
+
+    def test_provider_control_tags_are_not_emoji_normalized(self) -> None:
+        self.assertEqual(
+            normalize_text(
+                "[😀] Text 😀 <tag 😀/>",
+                [],
+                emoji_normalizer=_emoji_normalizer(),
+            ),
+            "[😀] Text, grinsendes gesicht <tag 😀/>",
+        )
+
+    def test_emoji_normalizer_runs_after_markdown_and_before_number_normalizer(
+        self,
+    ) -> None:
+        self.assertEqual(
+            normalize_text(
+                "**😀 3**",
+                [],
+                _german_number_normalizer(),
+                markdown_normalizer=_markdown_normalizer(),
+                emoji_normalizer=_emoji_normalizer(),
+            ),
+            "grinsendes gesicht, drei",
+        )
+
+    def test_default_emoji_language_prefers_output_language_then_english(self) -> None:
+        self.assertEqual(default_emoji_language("de-DE", ("de", "en")), "de")
+        self.assertEqual(default_emoji_language("nl-NL", ("de", "en")), "en")
+
+    def test_parse_emoji_normalizer_requires_supported_language_for_spellout(self) -> None:
+        with patch(
+            "custom_components.tts_proxy.emoji_normalizer.supported_emoji_languages",
+            return_value=("de", "en"),
+        ):
+            normalizer = parse_emoji_normalizer(
+                {
+                    CONF_EMOJI_NORMALIZER_ENABLED: True,
+                    CONF_EMOJI_HANDLING: EMOJI_HANDLING_SPELLOUT,
+                    CONF_EMOJI_LANGUAGE: "de",
+                }
+            )
+
+        self.assertTrue(normalizer.enabled)
+        self.assertEqual(normalizer.handling, EMOJI_HANDLING_SPELLOUT)
+        self.assertEqual(normalizer.language, "de")
+
+    def test_parse_emoji_normalizer_allows_remove_without_language(self) -> None:
+        with patch(
+            "custom_components.tts_proxy.emoji_normalizer.supported_emoji_languages",
+            return_value=("de", "en"),
+        ):
+            normalizer = parse_emoji_normalizer(
+                {
+                    CONF_EMOJI_NORMALIZER_ENABLED: True,
+                    CONF_EMOJI_HANDLING: EMOJI_HANDLING_REMOVE,
+                    CONF_EMOJI_LANGUAGE: "",
+                }
+            )
+
+        self.assertTrue(normalizer.enabled)
+        self.assertEqual(normalizer.handling, EMOJI_HANDLING_REMOVE)
+
+    def test_parse_emoji_normalizer_rejects_unknown_language_when_enabled(
+        self,
+    ) -> None:
+        with patch(
+            "custom_components.tts_proxy.emoji_normalizer.supported_emoji_languages",
+            return_value=("de", "en"),
+        ):
+            with self.assertRaises(EmojiNormalizationError):
+                parse_emoji_normalizer(
+                    {
+                        CONF_EMOJI_NORMALIZER_ENABLED: True,
+                        CONF_EMOJI_HANDLING: EMOJI_HANDLING_SPELLOUT,
+                        CONF_EMOJI_LANGUAGE: "xx",
+                    }
+                )
+
+    def test_normalizes_preview_text_from_unsaved_sectioned_emoji_config(self) -> None:
+        raw_config = {
+            SECTION_EMOJI: {
+                CONF_EMOJI_NORMALIZER_ENABLED: True,
+                CONF_EMOJI_HANDLING: EMOJI_HANDLING_SPELLOUT,
+                CONF_EMOJI_LANGUAGE: "de",
+            },
+        }
+
+        with (
+            patch(
+                "custom_components.tts_proxy.emoji_normalizer.supported_emoji_languages",
+                return_value=("de", "en"),
+            ),
+            patch(
+                "custom_components.tts_proxy.emoji_normalizer._replace_emoji",
+                side_effect=_fake_emoji_replacer,
+            ),
+        ):
+            self.assertEqual(
+                normalize_text_from_raw_config("Gut 😀", raw_config),
+                "Gut, grinsendes gesicht",
+            )
 
 
 class NumberNormalizerTests(unittest.TestCase):
@@ -988,6 +1221,17 @@ class StreamingNormalizerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual("".join(output), "Temp ist dreiundfünfzig Komma vier Grad.")
 
+    async def test_stream_emoji_normalizer_can_span_chunks(self) -> None:
+        output = await _collect_stream(
+            ["Super ", "😀", "🔥"],
+            [],
+            emoji_normalizer=_emoji_normalizer(),
+            safety_tail_chars=64,
+            max_buffer_chars=500,
+        )
+
+        self.assertEqual("".join(output), "Super, grinsendes gesicht, feuer")
+
     async def test_stream_date_normalizer_can_span_chunks(self) -> None:
         output = await _collect_stream(
             ["Termin am 1", "4.0", "5. um 12 Uhr."],
@@ -1044,27 +1288,34 @@ class ConfigTests(unittest.TestCase):
     """Proxy Configuration parsing."""
 
     def test_proxy_config_parses_rules_and_buffers(self) -> None:
-        config = parse_proxy_config(
-            {
-                "name": "German proxy",
-                CONF_TARGET_TTS_ENTITY: "tts.target",
-                CONF_OUTPUT_LANGUAGE: "de-DE",
-                CONF_REPLACEMENT_RULES: [
-                    {
-                        RULE_NAME: "Energy unit",
-                        RULE_ENABLED: True,
-                        RULE_MODE: RULE_MODE_LITERAL,
-                        RULE_FIND: "kWh",
-                        RULE_REPLACE: "Kilowattstunden",
-                        RULE_IGNORE_CASE: False,
-                    }
-                ],
-                CONF_NUMBER_NORMALIZER_ENABLED: False,
-                CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
-                CONF_SAFETY_TAIL_CHARS: 64,
-                CONF_MAX_BUFFER_CHARS: 500,
-            }
-        )
+        with patch(
+            "custom_components.tts_proxy.emoji_normalizer.supported_emoji_languages",
+            return_value=("de", "en"),
+        ):
+            config = parse_proxy_config(
+                {
+                    "name": "German proxy",
+                    CONF_TARGET_TTS_ENTITY: "tts.target",
+                    CONF_OUTPUT_LANGUAGE: "de-DE",
+                    CONF_REPLACEMENT_RULES: [
+                        {
+                            RULE_NAME: "Energy unit",
+                            RULE_ENABLED: True,
+                            RULE_MODE: RULE_MODE_LITERAL,
+                            RULE_FIND: "kWh",
+                            RULE_REPLACE: "Kilowattstunden",
+                            RULE_IGNORE_CASE: False,
+                        }
+                    ],
+                    CONF_EMOJI_NORMALIZER_ENABLED: True,
+                    CONF_EMOJI_HANDLING: EMOJI_HANDLING_SPELLOUT,
+                    CONF_EMOJI_LANGUAGE: "de",
+                    CONF_NUMBER_NORMALIZER_ENABLED: False,
+                    CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
+                    CONF_SAFETY_TAIL_CHARS: 64,
+                    CONF_MAX_BUFFER_CHARS: 500,
+                }
+            )
 
         self.assertEqual(config.name, "German proxy")
         self.assertEqual(config.target_tts_entity, "tts.target")
@@ -1072,6 +1323,9 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(len(config.rules), 1)
         self.assertEqual(config.rules[0].name, "Energy unit")
         self.assertFalse(config.markdown_normalizer.enabled)
+        self.assertTrue(config.emoji_normalizer.enabled)
+        self.assertEqual(config.emoji_normalizer.handling, EMOJI_HANDLING_SPELLOUT)
+        self.assertEqual(config.emoji_normalizer.language, "de")
         self.assertFalse(config.number_normalizer.enabled)
         self.assertEqual(config.number_normalizer.language, "de")
         self.assertEqual(config.safety_tail_chars, 64)
@@ -1103,33 +1357,45 @@ class ConfigTests(unittest.TestCase):
         self.assertNotIn(CONF_PREVIEW_TEXT, config)
 
     def test_serializable_config_flattens_form_sections(self) -> None:
-        config = serializable_config(
-            {
-                "name": "German proxy",
-                CONF_TARGET_TTS_ENTITY: "tts.target",
-                SECTION_GENERAL: {
-                    CONF_OUTPUT_LANGUAGE: "de-DE",
-                },
-                SECTION_MARKDOWN: {
-                    CONF_MARKDOWN_CLEANUP_ENABLED: True,
-                    CONF_MARKDOWN_STRIP_EMPHASIS: True,
-                    CONF_MARKDOWN_STRIP_LINKS: True,
-                    CONF_MARKDOWN_STRIP_TABLES: False,
-                },
-                SECTION_NUMBERS: {
-                    CONF_NUMBER_NORMALIZER_ENABLED: False,
-                    CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
-                },
-            }
-        )
+        with patch(
+            "custom_components.tts_proxy.emoji_normalizer.supported_emoji_languages",
+            return_value=("de", "en"),
+        ):
+            config = serializable_config(
+                {
+                    "name": "German proxy",
+                    CONF_TARGET_TTS_ENTITY: "tts.target",
+                    SECTION_GENERAL: {
+                        CONF_OUTPUT_LANGUAGE: "de-DE",
+                    },
+                    SECTION_MARKDOWN: {
+                        CONF_MARKDOWN_CLEANUP_ENABLED: True,
+                        CONF_MARKDOWN_STRIP_EMPHASIS: True,
+                        CONF_MARKDOWN_STRIP_LINKS: True,
+                        CONF_MARKDOWN_STRIP_TABLES: False,
+                    },
+                    SECTION_EMOJI: {
+                        CONF_EMOJI_NORMALIZER_ENABLED: True,
+                        CONF_EMOJI_HANDLING: EMOJI_HANDLING_REMOVE,
+                        CONF_EMOJI_LANGUAGE: "",
+                    },
+                    SECTION_NUMBERS: {
+                        CONF_NUMBER_NORMALIZER_ENABLED: False,
+                        CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
+                    },
+                }
+            )
 
         self.assertEqual(config[CONF_OUTPUT_LANGUAGE], "de-DE")
         self.assertTrue(config[CONF_MARKDOWN_CLEANUP_ENABLED])
         self.assertTrue(config[CONF_MARKDOWN_STRIP_EMPHASIS])
         self.assertTrue(config[CONF_MARKDOWN_STRIP_LINKS])
         self.assertFalse(config[CONF_MARKDOWN_STRIP_TABLES])
+        self.assertTrue(config[CONF_EMOJI_NORMALIZER_ENABLED])
+        self.assertEqual(config[CONF_EMOJI_HANDLING], EMOJI_HANDLING_REMOVE)
         self.assertNotIn(SECTION_GENERAL, config)
         self.assertNotIn(SECTION_MARKDOWN, config)
+        self.assertNotIn(SECTION_EMOJI, config)
         self.assertNotIn(SECTION_NUMBERS, config)
 
     def test_serializable_config_converts_legacy_rule_fields(self) -> None:

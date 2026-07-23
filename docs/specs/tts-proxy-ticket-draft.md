@@ -122,7 +122,7 @@ This breakdown captures the initial implementation plan for TTS Proxy.
 **Acceptance criteria**
 
 - [ ] Markdown Cleanup is a separate optional normalizer and is disabled by default.
-- [ ] Markdown Cleanup runs after Replacement Rules and before Date Normalizer and Number Normalizer.
+- [ ] Markdown Cleanup runs after Replacement Rules and before Emoji Normalizer, Date Normalizer, and Number Normalizer.
 - [ ] Each cleanup behavior can be enabled independently.
 - [ ] Enabled cleanup can strip emphasis, headings, list markers, table formatting, Markdown links, inline code backticks, blockquote markers, divider lines, strikethrough markers, and image syntax.
 - [ ] Plain URL removal and fenced code block removal are opt-in.
@@ -132,3 +132,23 @@ This breakdown captures the initial implementation plan for TTS Proxy.
 - [ ] Options flow settings are grouped into native Home Assistant sections, with Preview Input as the final top-level field before the preview output.
 - [ ] Preview uses unsaved sectioned form data.
 - [ ] Tests cover Markdown cleanup behavior, pipeline order, Provider Control Tags, sectioned config flattening, and preview config flattening.
+
+## 08 - Add Emoji Normalizer
+
+**Blocked by:** 07 - Add Markdown Cleanup Normalizer.
+
+**What it delivers:** A user can optionally remove emoji or replace emoji with localized spoken names before text reaches date and number normalization.
+
+**Acceptance criteria**
+
+- [ ] Emoji Normalizer is a separate optional normalizer and is disabled by default.
+- [ ] Emoji Normalizer runs after Markdown Cleanup and before Date Normalizer and Number Normalizer.
+- [ ] Emoji Handling is a dropdown with Spell out emoji and Remove emoji.
+- [ ] Spell out emoji is the default handling when the normalizer is enabled.
+- [ ] Emoji Language is selected from the languages supported by the emoji package.
+- [ ] Emoji Language defaults from Output Language when supported and otherwise to English when available.
+- [ ] Spellout uses localized emoji names, falls back to English per emoji when needed, and leaves unknown emoji unchanged.
+- [ ] Spoken emoji names are separated from surrounding text with commas.
+- [ ] Remove mode deletes emoji without adding punctuation.
+- [ ] Provider Control Tags are preserved.
+- [ ] Tests cover remove mode, spellout mode, fallback language behavior, Provider Control Tags, pipeline order, streaming, config parsing, and sectioned config flattening.

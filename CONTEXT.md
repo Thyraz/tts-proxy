@@ -17,7 +17,7 @@ The single TTS language exposed by a Proxy TTS Entity and passed to its Target T
 _Avoid_: replacement language, input language
 
 **Proxy Configuration**:
-The setup and options data for one Proxy TTS Entity: display name, Target TTS Entity, Output Language, Replacement Rules, Markdown Cleanup settings, Date Normalizer settings, Number Normalizer settings, and streaming buffer settings. The Output Language must be supported by the Target TTS Entity when the configuration is saved. Each config entry owns exactly one Proxy TTS Entity.
+The setup and options data for one Proxy TTS Entity: display name, Target TTS Entity, Output Language, Replacement Rules, Markdown Cleanup settings, Emoji Normalizer settings, Date Normalizer settings, Number Normalizer settings, and streaming buffer settings. The Output Language must be supported by the Target TTS Entity when the configuration is saved. Each config entry owns exactly one Proxy TTS Entity.
 _Avoid_: runtime selector
 
 **Proxy Reconfiguration**:
@@ -36,13 +36,25 @@ _Avoid_: per-call option
 An optional display-only label for a Replacement Rule. It helps identify a rule in Home Assistant's collapsed options-flow row, but does not affect matching, replacement output, ordering, validation, or runtime behavior.
 _Avoid_: rule id, rule condition
 
+**Markdown Cleanup Normalizer**:
+An optional built-in normalizer owned by a Proxy TTS Entity that removes or simplifies configured Markdown syntax before Emoji Normalizer, Date Normalizer, and Number Normalizer processing. It is cleanup-oriented rather than a semantic Markdown-to-speech renderer, and each supported Markdown feature can be enabled separately. The MVP supports common emphasis, heading, list, table, link, image, inline-code, code-block, blockquote, divider-line, strikethrough, and plain-URL cleanup, but not reference-style links, footnotes, definition lists, HTML cleanup, escaped Markdown punctuation, or nested Markdown edge cases.
+_Avoid_: Markdown renderer, audio formatter
+
+**Emoji Normalizer**:
+An optional built-in normalizer owned by a Proxy TTS Entity that either removes emoji or replaces them with localized spoken names. It is separate from Markdown Cleanup because emoji are Unicode text, not Markdown syntax, and because removing emoji is a different user choice from speaking their names.
+_Avoid_: emoji cleanup rule, emoji renderer
+
+**Emoji Handling**:
+The configured Emoji Normalizer mode. It either removes emoji or spells emoji out as localized names separated from surrounding speech text with commas.
+_Avoid_: emoji action, emoji mode
+
+**Emoji Language**:
+The language selected for Emoji Normalizer spellout names. It may default from Output Language, but remains a separate configuration choice because emoji name support comes from the emoji package and does not match Target TTS Entity language support exactly.
+_Avoid_: output language, TTS language
+
 **Number Normalizer**:
 An optional built-in normalizer owned by a Proxy TTS Entity that converts eligible numeric text into language-specific spoken words after Replacement Rules have run and before delegating to the Target TTS Entity. It is configured separately from Replacement Rules because it needs token classification and language-specific number grammar, not simple string matching.
 _Avoid_: number replacement rule, regex number rule
-
-**Markdown Cleanup Normalizer**:
-An optional built-in normalizer owned by a Proxy TTS Entity that removes or simplifies configured Markdown syntax before Date Normalizer and Number Normalizer processing. It is cleanup-oriented rather than a semantic Markdown-to-speech renderer, and each supported Markdown feature can be enabled separately. The MVP supports common emphasis, heading, list, table, link, image, inline-code, code-block, blockquote, divider-line, strikethrough, and plain-URL cleanup, but not reference-style links, footnotes, definition lists, HTML cleanup, escaped Markdown punctuation, or nested Markdown edge cases.
-_Avoid_: Markdown renderer, audio formatter
 
 **Markdown Link Text**:
 The visible label of a Markdown link, such as `Description` in `[Description](https://example.com)`. Markdown Cleanup may keep this text while removing the URL target.
@@ -129,7 +141,7 @@ A Date Renderer that speaks day, month, and optional year as numeric parts witho
 _Avoid_: generic date renderer, automatic locale support
 
 **Normalization Preview**:
-A configuration-time view of the text a Proxy TTS Entity would send to its Target TTS Entity after applying Replacement Rules, Markdown Cleanup, the Date Normalizer, and the Number Normalizer. It uses unsaved form values when available, does not synthesize audio, and does not change saved configuration.
+A configuration-time view of the text a Proxy TTS Entity would send to its Target TTS Entity after applying Replacement Rules, Markdown Cleanup, the Emoji Normalizer, the Date Normalizer, and the Number Normalizer. It uses unsaved form values when available, does not synthesize audio, and does not change saved configuration.
 _Avoid_: TTS preview, Assist preview, test playback
 
 **Rule Preset**:
@@ -137,7 +149,7 @@ A future package of suggested Replacement Rules for a common language or use cas
 _Avoid_: built-in grammar
 
 **Provider Control Tag**:
-Inline markup in TTS input that a Target TTS Entity may interpret as voice, pronunciation, pause, or delivery control. Provider Control Tags are preserved by the Proxy TTS Entity and are not changed by Replacement Rules, Date Normalizer, or Number Normalizer. Markdown Cleanup may rewrite explicit Markdown constructs, but isolated Provider Control Tags stay opaque.
+Inline markup in TTS input that a Target TTS Entity may interpret as voice, pronunciation, pause, or delivery control. Provider Control Tags are preserved by the Proxy TTS Entity and are not changed by Replacement Rules, Emoji Normalizer, Date Normalizer, or Number Normalizer. Markdown Cleanup may rewrite explicit Markdown constructs, but isolated Provider Control Tags stay opaque.
 _Avoid_: replacement target
 
 **Minimal Lookahead Buffer Length**:
