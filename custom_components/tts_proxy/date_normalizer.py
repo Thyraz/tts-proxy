@@ -659,11 +659,15 @@ def _is_day_month_name_dot(text: str, index: int) -> bool:
     if match is None or not _has_start_boundary(text, match.start()):
         return False
     next_token = re.match(
-        rf"\s+(?P<month>{_MONTH_NAME_RE.pattern})(?:\s|$)",
+        rf"\s+(?P<month>{_MONTH_NAME_RE.pattern})",
         text[index + 1 :],
         re.IGNORECASE,
     )
-    return next_token is not None
+    if next_token is None:
+        return False
+
+    month_end = index + 1 + next_token.end("month")
+    return _has_end_boundary(text, month_end)
 
 
 def _month_name_value(month_name: str, language: str) -> tuple[int, str] | None:

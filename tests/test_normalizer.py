@@ -137,6 +137,7 @@ def _fake_date_number(value: int, language: str, purpose: str) -> str:
         ("de", "ordinal", 15): "fünfzehnte",
         ("de", "ordinal", 21): "einundzwanzigste",
         ("de", "ordinal", 23): "dreiundzwanzigste",
+        ("de", "ordinal", 25): "fünfundzwanzigste",
         ("de", "ordinal", 27): "siebenundzwanzigste",
         ("de", "year", 1984): "neunzehnhundertvierundachtzig",
         ("de", "year", 2025): "zweitausendfünfundzwanzig",
@@ -1269,6 +1270,24 @@ class StreamingNormalizerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             "".join(output),
             "Termin am fünfzehnten August zweitausendfünfundzwanzig um 12 Uhr.",
+        )
+
+    async def test_stream_does_not_flush_inside_markdown_wrapped_month_name_date(
+        self,
+    ) -> None:
+        output = await _collect_stream(
+            ["**Samstag,\u202f25.\u202fJuli** - **Bedingung:** sonnig."],
+            [],
+            None,
+            _date_normalizer(input_formats=(DATE_INPUT_FORMAT_DMY_MONTH_NAME,)),
+            _markdown_normalizer(),
+            safety_tail_chars=5,
+            max_buffer_chars=500,
+        )
+
+        self.assertEqual(
+            "".join(output),
+            "Samstag,\u202ffünfundzwanzigster Juli - Bedingung: sonnig.",
         )
 
     async def test_stream_does_not_flush_inside_spaced_dot_date(self) -> None:
