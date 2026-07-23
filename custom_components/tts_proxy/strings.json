@@ -12,22 +12,69 @@
       },
       "details": {
         "title": "Configure TTS Proxy",
-        "description": "Choose the output language supported by the selected Target TTS Entity, then configure user-defined replacements, date detection, number detection, and streaming buffer settings.",
         "data": {
-          "output_language": "Output Language",
-          "replacement_rules": "Replacement Rules",
-          "date_normalizer_enabled": "Enable Date Normalizer",
-          "date_locale": "Date Locale",
-          "date_renderer": "Date Renderer",
-          "date_input_formats": "Date Input Formats",
-          "number_normalizer_enabled": "Enable Number Normalizer",
-          "number_spellout_language": "Number Spellout Language",
-          "safety_tail_chars": "Streaming Safety Tail",
-          "max_buffer_chars": "Streaming Buffer Limit",
           "preview_text": "Preview Input"
         },
         "data_description": {
           "preview_text": "Enter sample text to preview the processed text that would be sent to the Target TTS Entity."
+        },
+        "sections": {
+          "general": {
+            "name": "General",
+            "data": {
+              "output_language": "Output Language"
+            }
+          },
+          "replacements": {
+            "name": "Replacement Rules",
+            "data": {
+              "replacement_rules": " "
+            }
+          },
+          "markdown": {
+            "name": "Markdown Cleanup",
+            "data": {
+              "markdown_cleanup_enabled": "Enable Markdown Cleanup",
+              "markdown_strip_emphasis": "Strip emphasis markers",
+              "markdown_strip_headings": "Strip headings",
+              "markdown_strip_list_markers": "Strip list markers",
+              "markdown_strip_tables": "Strip table formatting",
+              "markdown_strip_links": "Strip Markdown links to link text",
+              "markdown_remove_plain_urls": "Remove plain URLs",
+              "markdown_strip_inline_code": "Strip inline code backticks",
+              "markdown_remove_code_blocks": "Remove code blocks",
+              "markdown_strip_blockquotes": "Strip blockquote markers",
+              "markdown_remove_divider_lines": "Remove divider lines",
+              "markdown_strip_strikethrough": "Strip strikethrough markers",
+              "markdown_strip_images": "Strip image syntax to alt text"
+            },
+            "data_description": {
+              "markdown_cleanup_enabled": "Subrules below are only applied if this global switch is enabled."
+            }
+          },
+          "dates": {
+            "name": "Date Normalizer",
+            "data": {
+              "date_normalizer_enabled": "Enable Date Normalizer",
+              "date_locale": "Date Locale",
+              "date_renderer": "Date Renderer",
+              "date_input_formats": "Date Input Formats"
+            }
+          },
+          "numbers": {
+            "name": "Number Normalizer",
+            "data": {
+              "number_normalizer_enabled": "Enable Number Normalizer",
+              "number_spellout_language": "Number Spellout Language"
+            }
+          },
+          "streaming": {
+            "name": "Settings for TTS Streaming",
+            "data": {
+              "safety_tail_chars": "Minimal Lookahead Buffer Length",
+              "max_buffer_chars": "Maximal Buffer Limit"
+            }
+          }
         }
       }
     },
@@ -37,7 +84,7 @@
       "invalid_rule": "One or more Replacement Rules are invalid.",
       "invalid_date_normalizer": "Select a supported Date Locale, Date Renderer, and at least one Date Input Format.",
       "invalid_number_normalizer": "Select a supported Number Spellout Language when the Number Normalizer is enabled.",
-      "invalid_buffer_config": "Streaming Buffer Limit must be greater than Streaming Safety Tail."
+      "invalid_buffer_config": "Maximal Buffer Limit must be greater than Minimal Lookahead Buffer Length."
     }
   },
   "options": {
@@ -52,22 +99,69 @@
       },
       "details": {
         "title": "Configure TTS Proxy Details",
-        "description": "Choose the output language supported by the selected Target TTS Entity, then configure user-defined replacements, date detection, number detection, and streaming buffer settings.",
         "data": {
-          "output_language": "Output Language",
-          "replacement_rules": "Replacement Rules",
-          "date_normalizer_enabled": "Enable Date Normalizer",
-          "date_locale": "Date Locale",
-          "date_renderer": "Date Renderer",
-          "date_input_formats": "Date Input Formats",
-          "number_normalizer_enabled": "Enable Number Normalizer",
-          "number_spellout_language": "Number Spellout Language",
-          "safety_tail_chars": "Streaming Safety Tail",
-          "max_buffer_chars": "Streaming Buffer Limit",
           "preview_text": "Preview Input"
         },
         "data_description": {
           "preview_text": "Enter sample text to preview the processed text that would be sent to the Target TTS Entity."
+        },
+        "sections": {
+          "general": {
+            "name": "General",
+            "data": {
+              "output_language": "Output Language"
+            }
+          },
+          "replacements": {
+            "name": "Replacement Rules",
+            "data": {
+              "replacement_rules": " "
+            }
+          },
+          "markdown": {
+            "name": "Markdown Cleanup",
+            "data": {
+              "markdown_cleanup_enabled": "Enable Markdown Cleanup",
+              "markdown_strip_emphasis": "Strip emphasis markers",
+              "markdown_strip_headings": "Strip headings",
+              "markdown_strip_list_markers": "Strip list markers",
+              "markdown_strip_tables": "Strip table formatting",
+              "markdown_strip_links": "Strip Markdown links to link text",
+              "markdown_remove_plain_urls": "Remove plain URLs",
+              "markdown_strip_inline_code": "Strip inline code backticks",
+              "markdown_remove_code_blocks": "Remove code blocks",
+              "markdown_strip_blockquotes": "Strip blockquote markers",
+              "markdown_remove_divider_lines": "Remove divider lines",
+              "markdown_strip_strikethrough": "Strip strikethrough markers",
+              "markdown_strip_images": "Strip image syntax to alt text"
+            },
+            "data_description": {
+              "markdown_cleanup_enabled": "Subrules below are only applied if this global switch is enabled."
+            }
+          },
+          "dates": {
+            "name": "Date Normalizer",
+            "data": {
+              "date_normalizer_enabled": "Enable Date Normalizer",
+              "date_locale": "Date Locale",
+              "date_renderer": "Date Renderer",
+              "date_input_formats": "Date Input Formats"
+            }
+          },
+          "numbers": {
+            "name": "Number Normalizer",
+            "data": {
+              "number_normalizer_enabled": "Enable Number Normalizer",
+              "number_spellout_language": "Number Spellout Language"
+            }
+          },
+          "streaming": {
+            "name": "Settings for TTS Streaming",
+            "data": {
+              "safety_tail_chars": "Minimal Lookahead Buffer Length",
+              "max_buffer_chars": "Maximal Buffer Limit"
+            }
+          }
         }
       }
     },
@@ -77,7 +171,7 @@
       "invalid_rule": "One or more Replacement Rules are invalid.",
       "invalid_date_normalizer": "Select a supported Date Locale, Date Renderer, and at least one Date Input Format.",
       "invalid_number_normalizer": "Select a supported Number Spellout Language when the Number Normalizer is enabled.",
-      "invalid_buffer_config": "Streaming Buffer Limit must be greater than Streaming Safety Tail."
+      "invalid_buffer_config": "Maximal Buffer Limit must be greater than Minimal Lookahead Buffer Length."
     }
   }
 }

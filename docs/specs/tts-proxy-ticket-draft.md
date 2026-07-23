@@ -52,12 +52,12 @@ This breakdown captures the initial implementation plan for TTS Proxy.
 
 - [ ] The proxy reports streaming support only when the configured Target TTS Entity supports streaming.
 - [ ] Streaming input is processed with a bounded pending buffer, not per incoming chunk.
-- [ ] Streaming Safety Tail defaults to 64 characters.
-- [ ] Streaming Buffer Limit defaults to 500 characters.
+- [ ] Minimal Lookahead Buffer Length defaults to 64 characters.
+- [ ] Maximal Buffer Limit defaults to 500 characters.
 - [ ] Both buffer settings are configurable per proxy entity.
-- [ ] The normalizer flushes at sentence-like punctuation boundaries before the Streaming Safety Tail.
+- [ ] The normalizer flushes at sentence-like punctuation boundaries before the Minimal Lookahead Buffer Length.
 - [ ] Decimal punctuation such as `53.4` is not treated as a sentence boundary.
-- [ ] If the buffer exceeds the Streaming Buffer Limit, the normalizer flushes at a safe whitespace boundary while preserving the Streaming Safety Tail.
+- [ ] If the buffer exceeds the Maximal Buffer Limit, the normalizer flushes at a safe whitespace boundary while preserving the Minimal Lookahead Buffer Length.
 - [ ] End of stream flushes all remaining pending text.
 - [ ] If the Target TTS Entity supports streaming, the proxy delegates a processed text stream to it.
 - [ ] If the Target TTS Entity does not support streaming, the proxy uses full-message normalization and one-shot synthesis.
@@ -82,7 +82,7 @@ This breakdown captures the initial implementation plan for TTS Proxy.
 
 **Blocked by:** 02 - Add Replacement Rules for one-shot normalization; 04 - Mirror Target TTS Entity capabilities and pass through valid options.
 
-**What it delivers:** A user can change the proxy display name, Target TTS Entity, Output Language, Replacement Rules, Streaming Safety Tail, and Streaming Buffer Limit after setup without breaking existing Home Assistant references.
+**What it delivers:** A user can change the proxy display name, Target TTS Entity, Output Language, Replacement Rules, Minimal Lookahead Buffer Length, and Maximal Buffer Limit after setup without breaking existing Home Assistant references.
 
 **Acceptance criteria**
 
@@ -90,7 +90,7 @@ This breakdown captures the initial implementation plan for TTS Proxy.
 - [ ] Options flow can change Target TTS Entity.
 - [ ] Changing Target TTS Entity requires choosing a supported Output Language for the new Target TTS Entity.
 - [ ] Options flow can edit Replacement Rules.
-- [ ] Options flow can edit Streaming Safety Tail and Streaming Buffer Limit.
+- [ ] Options flow can edit Minimal Lookahead Buffer Length and Maximal Buffer Limit.
 - [ ] Saving options reloads the config entry so cached capabilities are rebuilt.
 - [ ] Proxy entity identity remains stable across Proxy Reconfiguration.
 - [ ] The Proxy TTS Entity becomes unavailable when the Target TTS Entity is unavailable or missing.
@@ -107,8 +107,28 @@ This breakdown captures the initial implementation plan for TTS Proxy.
 
 - [ ] Config and options flows use native Home Assistant selectors where possible.
 - [ ] Replacement Rules are edited as structured rows rather than one large text blob.
-- [ ] User-facing strings explain Target TTS Entity, Output Language, Streaming Safety Tail, and Streaming Buffer Limit.
+- [ ] User-facing strings explain Target TTS Entity, Output Language, Minimal Lookahead Buffer Length, and Maximal Buffer Limit.
 - [ ] Documentation includes German examples such as `°C -> Grad` and `kWh -> Kilowattstunden`.
 - [ ] Documentation explains that `<...>` and `[...]` spans are preserved and not changed in the MVP.
 - [ ] Documentation explains that templates, Rule Presets, audio preview, built-in unit grammar, and proxy-to-proxy delegation are out of scope for the MVP.
 - [ ] Final verification covers one-shot TTS and streaming TTS through fake or real-compatible test entities.
+
+## 07 - Add Markdown Cleanup Normalizer
+
+**Blocked by:** 03 - Add streaming normalization and honest streaming capability; 06 - Finish MVP UX, documentation, and examples.
+
+**What it delivers:** A user can optionally simplify common Markdown syntax before text reaches date and number normalization.
+
+**Acceptance criteria**
+
+- [ ] Markdown Cleanup is a separate optional normalizer and is disabled by default.
+- [ ] Markdown Cleanup runs after Replacement Rules and before Date Normalizer and Number Normalizer.
+- [ ] Each cleanup behavior can be enabled independently.
+- [ ] Enabled cleanup can strip emphasis, headings, list markers, table formatting, Markdown links, inline code backticks, blockquote markers, divider lines, strikethrough markers, and image syntax.
+- [ ] Plain URL removal and fenced code block removal are opt-in.
+- [ ] Markdown links keep visible link text and remove the URL target.
+- [ ] Table cleanup removes separator lines and replaces cell separators with punctuation without announcing table semantics.
+- [ ] Isolated square-bracket Provider Control Tags such as `[whispers]` are preserved.
+- [ ] Options flow settings are grouped into native Home Assistant sections, with Preview Input as the final top-level field before the preview output.
+- [ ] Preview uses unsaved sectioned form data.
+- [ ] Tests cover Markdown cleanup behavior, pipeline order, Provider Control Tags, sectioned config flattening, and preview config flattening.

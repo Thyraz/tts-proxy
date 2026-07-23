@@ -30,6 +30,11 @@ from .date_normalizer import (
     is_date_token_punctuation,
     parse_date_normalizer,
 )
+from .form_data import flatten_config_sections
+from .markdown_normalizer import (
+    MarkdownCleanupNormalizer,
+    parse_markdown_cleanup_normalizer,
+)
 
 _CONTROL_TAG_RE = re.compile(r"(<[^>]*>|\[[^\]]*\])")
 _NUMERIC_TEXT_RE = re.compile(r"-?\d+(?:[.,]\d+)?")
@@ -231,11 +236,13 @@ def supported_number_spellout_languages() -> tuple[str, ...]:
 
 def normalize_text_from_raw_config(text: str, raw_config: Mapping[str, Any]) -> str:
     """Normalize text using raw Proxy Configuration data."""
+    raw_config = flatten_config_sections(raw_config)
     return normalize_text(
         text,
         parse_rules(raw_config.get(CONF_REPLACEMENT_RULES, [])),
-        parse_number_normalizer(raw_config),
-        parse_date_normalizer(raw_config),
+        markdown_normalizer=parse_markdown_cleanup_normalizer(raw_config),
+        number_normalizer=parse_number_normalizer(raw_config),
+        date_normalizer=parse_date_normalizer(raw_config),
     )
 
 
@@ -264,30 +271,43 @@ def normalize_text(
     rules: Iterable[ReplacementRule],
     number_normalizer: NumberNormalizer | None = None,
     date_normalizer: DateNormalizer | None = None,
+    markdown_normalizer: MarkdownCleanupNormalizer | None = None,
 ) -> str:
     """Normalize text while preserving Provider Control Tags."""
     if not text:
         return text
 
+    normalized = _normalize_preserving_control_tags(
+        text,
+        lambda segment: _apply_rules(segment, rules),
+    )
+    if markdown_normalizer is not None:
+        normalized = markdown_normalizer.normalize(normalized)
+    return _normalize_preserving_control_tags(
+        normalized,
+        lambda segment: _apply_date_and_number_normalizers(
+            segment,
+            number_normalizer,
+            date_normalizer,
+        ),
+    )
+
+
+def _normalize_preserving_control_tags(
+    text: str,
+    normalize_segment: Callable[[str], str],
+) -> str:
+    """Normalize speech text segments while preserving Provider Control Tags."""
     parts: list[str] = []
     cursor = 0
     for match in _CONTROL_TAG_RE.finditer(text):
         if match.start() > cursor:
-            parts.append(
-                _normalize_segment(
-                    text[cursor : match.start()],
-                    rules,
-                    number_normalizer,
-                    date_normalizer,
-                )
-            )
+            parts.append(normalize_segment(text[cursor : match.start()]))
         parts.append(match.group(0))
         cursor = match.end()
 
     if cursor < len(text):
-        parts.append(
-            _normalize_segment(text[cursor:], rules, number_normalizer, date_normalizer)
-        )
+        parts.append(normalize_segment(text[cursor:]))
 
     return "".join(parts)
 
@@ -297,6 +317,7 @@ async def normalize_stream(
     rules: Iterable[ReplacementRule],
     number_normalizer: NumberNormalizer | None = None,
     date_normalizer: DateNormalizer | None = None,
+    markdown_normalizer: MarkdownCleanupNormalizer | None = None,
     *,
     safety_tail_chars: int = DEFAULT_SAFETY_TAIL_CHARS,
     max_buffer_chars: int = DEFAULT_MAX_BUFFER_CHARS,
@@ -323,12 +344,19 @@ async def normalize_stream(
                 yield normalize_text(
                     segment,
                     materialized_rules,
-                    number_normalizer,
-                    date_normalizer,
+                    markdown_normalizer=markdown_normalizer,
+                    number_normalizer=number_normalizer,
+                    date_normalizer=date_normalizer,
                 )
 
     if pending:
-        yield normalize_text(pending, materialized_rules, number_normalizer, date_normalizer)
+        yield normalize_text(
+            pending,
+            materialized_rules,
+            markdown_normalizer=markdown_normalizer,
+            number_normalizer=number_normalizer,
+            date_normalizer=date_normalizer,
+        )
 
 
 def validate_streaming_buffer_config(
@@ -337,11 +365,13 @@ def validate_streaming_buffer_config(
 ) -> None:
     """Validate streaming buffer settings."""
     if safety_tail_chars < 0:
-        raise ValueError("Streaming Safety Tail must be zero or greater")
+        raise ValueError("Minimal Lookahead Buffer Length must be zero or greater")
     if max_buffer_chars <= 0:
-        raise ValueError("Streaming Buffer Limit must be greater than zero")
+        raise ValueError("Maximal Buffer Limit must be greater than zero")
     if max_buffer_chars <= safety_tail_chars:
-        raise ValueError("Streaming Buffer Limit must be greater than Streaming Safety Tail")
+        raise ValueError(
+            "Maximal Buffer Limit must be greater than Minimal Lookahead Buffer Length"
+        )
 
 
 def _apply_rules(text: str, rules: Iterable[ReplacementRule]) -> str:
@@ -352,14 +382,13 @@ def _apply_rules(text: str, rules: Iterable[ReplacementRule]) -> str:
     return normalized
 
 
-def _normalize_segment(
+def _apply_date_and_number_normalizers(
     text: str,
-    rules: Iterable[ReplacementRule],
     number_normalizer: NumberNormalizer | None,
     date_normalizer: DateNormalizer | None,
 ) -> str:
-    """Apply Replacement Rules, Date Normalizer, then Number Normalizer."""
-    normalized = _apply_rules(text, rules)
+    """Apply Date Normalizer, then Number Normalizer."""
+    normalized = text
     if date_normalizer is not None:
         normalized = date_normalizer.normalize(normalized)
     if number_normalizer is not None:

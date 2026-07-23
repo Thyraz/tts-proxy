@@ -12,6 +12,7 @@ from homeassistant.components.tts import TextToSpeechEntity
 from homeassistant.components.tts.helper import get_engine_instance
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.data_entry_flow import section as form_section
 from homeassistant.helpers import selector
 
 from .config import form_defaults, merged_entry_config, serializable_config
@@ -21,6 +22,19 @@ from .const import (
     CONF_DATE_NORMALIZER_ENABLED,
     CONF_DATE_RENDERER,
     CONF_TARGET_TTS_ENTITY,
+    CONF_MARKDOWN_CLEANUP_ENABLED,
+    CONF_MARKDOWN_REMOVE_CODE_BLOCKS,
+    CONF_MARKDOWN_REMOVE_DIVIDER_LINES,
+    CONF_MARKDOWN_REMOVE_PLAIN_URLS,
+    CONF_MARKDOWN_STRIP_BLOCKQUOTES,
+    CONF_MARKDOWN_STRIP_EMPHASIS,
+    CONF_MARKDOWN_STRIP_HEADINGS,
+    CONF_MARKDOWN_STRIP_IMAGES,
+    CONF_MARKDOWN_STRIP_INLINE_CODE,
+    CONF_MARKDOWN_STRIP_LINKS,
+    CONF_MARKDOWN_STRIP_LIST_MARKERS,
+    CONF_MARKDOWN_STRIP_STRIKETHROUGH,
+    CONF_MARKDOWN_STRIP_TABLES,
     CONF_MAX_BUFFER_CHARS,
     CONF_NUMBER_NORMALIZER_ENABLED,
     CONF_NUMBER_SPELLOUT_LANGUAGE,
@@ -42,6 +56,12 @@ from .const import (
     RULE_MODE_REGEX,
     RULE_NAME,
     RULE_REPLACE,
+    SECTION_DATES,
+    SECTION_GENERAL,
+    SECTION_MARKDOWN,
+    SECTION_NUMBERS,
+    SECTION_REPLACEMENTS,
+    SECTION_STREAMING,
 )
 from .date_normalizer import (
     DateNormalizationError,
@@ -52,6 +72,7 @@ from .date_normalizer import (
     supported_date_locales,
     supported_date_renderers,
 )
+from .form_data import flatten_config_sections
 from .normalizer import (
     NumberNormalizationError,
     RuleValidationError,
@@ -244,123 +265,28 @@ def _details_schema(
 
     return vol.Schema(
         {
-            vol.Required(
-                CONF_OUTPUT_LANGUAGE,
-                default=language_default,
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=languages,
-                    mode="dropdown",
-                    sort=True,
-                )
+            vol.Required(SECTION_GENERAL): _general_section_schema(
+                languages,
+                language_default,
+                defaults,
             ),
-            vol.Optional(
-                CONF_REPLACEMENT_RULES,
-                default=defaults.get(CONF_REPLACEMENT_RULES, []),
-            ): selector.ObjectSelector(
-                selector.ObjectSelectorConfig(
-                    multiple=True,
-                    label_field=RULE_NAME,
-                    description_field=RULE_FIND,
-                    fields={
-                        RULE_NAME: {
-                            "label": "Name",
-                            "required": False,
-                            "selector": selector.TextSelector(),
-                        },
-                        RULE_DISABLED: {
-                            "label": "Disabled",
-                            "required": False,
-                            "selector": selector.BooleanSelector(),
-                        },
-                        RULE_MODE: {
-                            "label": "Mode (default: literal)",
-                            "required": False,
-                            "selector": selector.SelectSelector(
-                                selector.SelectSelectorConfig(
-                                    options=[RULE_MODE_LITERAL, RULE_MODE_REGEX]
-                                )
-                            ),
-                        },
-                        RULE_FIND: {
-                            "label": "Find",
-                            "required": True,
-                            "selector": selector.TextSelector(),
-                        },
-                        RULE_REPLACE: {
-                            "label": "Replace",
-                            "required": False,
-                            "selector": selector.TextSelector(),
-                        },
-                        RULE_CASE_SENSITIVE: {
-                            "label": "Case sensitive",
-                            "required": False,
-                            "selector": selector.BooleanSelector(),
-                        },
-                    },
-                )
+            vol.Required(SECTION_REPLACEMENTS): _replacement_rules_section_schema(
+                defaults
             ),
-            vol.Optional(
-                CONF_DATE_NORMALIZER_ENABLED,
-                default=defaults.get(CONF_DATE_NORMALIZER_ENABLED, False),
-            ): selector.BooleanSelector(),
-            vol.Optional(
-                CONF_DATE_LOCALE,
-                default=date_locale_default,
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=date_locales,
-                    mode="dropdown",
-                    sort=True,
-                )
+            vol.Required(SECTION_MARKDOWN): _markdown_section_schema(defaults),
+            vol.Required(SECTION_DATES): _date_section_schema(
+                date_locales,
+                date_locale_default,
+                date_renderer_default,
+                date_input_formats_default,
+                defaults,
             ),
-            vol.Optional(
-                CONF_DATE_RENDERER,
-                default=date_renderer_default,
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=_date_renderer_options(),
-                    mode="dropdown",
-                )
+            vol.Required(SECTION_NUMBERS): _number_section_schema(
+                number_languages,
+                number_language_default,
+                defaults,
             ),
-            vol.Optional(
-                CONF_DATE_INPUT_FORMATS,
-                default=date_input_formats_default,
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=_date_input_format_options(),
-                    multiple=True,
-                    mode="list",
-                )
-            ),
-            vol.Optional(
-                CONF_NUMBER_NORMALIZER_ENABLED,
-                default=defaults.get(CONF_NUMBER_NORMALIZER_ENABLED, False),
-            ): selector.BooleanSelector(),
-            vol.Optional(
-                CONF_NUMBER_SPELLOUT_LANGUAGE,
-                default=number_language_default,
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=number_languages,
-                    mode="dropdown",
-                    sort=True,
-                )
-            ),
-            vol.Optional(
-                CONF_SAFETY_TAIL_CHARS,
-                default=defaults.get(
-                    CONF_SAFETY_TAIL_CHARS, DEFAULT_SAFETY_TAIL_CHARS
-                ),
-            ): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=0, max=1024, mode="box")
-            ),
-            vol.Optional(
-                CONF_MAX_BUFFER_CHARS,
-                default=defaults.get(CONF_MAX_BUFFER_CHARS, DEFAULT_MAX_BUFFER_CHARS),
-            ): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=1, max=10000, mode="box")
-            ),
+            vol.Required(SECTION_STREAMING): _streaming_section_schema(defaults),
             vol.Optional(
                 CONF_PREVIEW_TEXT,
                 default=defaults.get(CONF_PREVIEW_TEXT, ""),
@@ -379,6 +305,258 @@ def _validate_target_tts_entity(
     if not target_tts_entity or _get_target_tts_entity(hass, target_tts_entity) is None:
         errors[CONF_TARGET_TTS_ENTITY] = "invalid_target_tts_entity"
     return errors
+
+
+def _general_section_schema(
+    languages: list[str],
+    language_default: str,
+    defaults: dict[str, Any],
+) -> Any:
+    """Return the General section schema."""
+    return form_section(
+        vol.Schema(
+            {
+                vol.Required(
+                    CONF_OUTPUT_LANGUAGE,
+                    default=language_default,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=languages,
+                        mode="dropdown",
+                        sort=True,
+                    )
+                ),
+            }
+        ),
+        {"collapsed": True},
+    )
+
+
+def _replacement_rules_section_schema(defaults: dict[str, Any]) -> Any:
+    """Return the Replacement Rules section schema."""
+    return form_section(
+        vol.Schema(
+            {
+                vol.Optional(
+                    CONF_REPLACEMENT_RULES,
+                    default=defaults.get(CONF_REPLACEMENT_RULES, []),
+                ): selector.ObjectSelector(
+                    selector.ObjectSelectorConfig(
+                        multiple=True,
+                        label_field=RULE_NAME,
+                        description_field=RULE_FIND,
+                        fields={
+                            RULE_NAME: {
+                                "label": "Name",
+                                "required": False,
+                                "selector": selector.TextSelector(),
+                            },
+                            RULE_DISABLED: {
+                                "label": "Disabled",
+                                "required": False,
+                                "selector": selector.BooleanSelector(),
+                            },
+                            RULE_MODE: {
+                                "label": "Mode (default: literal)",
+                                "required": False,
+                                "selector": selector.SelectSelector(
+                                    selector.SelectSelectorConfig(
+                                        options=[RULE_MODE_LITERAL, RULE_MODE_REGEX]
+                                    )
+                                ),
+                            },
+                            RULE_FIND: {
+                                "label": "Find",
+                                "required": True,
+                                "selector": selector.TextSelector(),
+                            },
+                            RULE_REPLACE: {
+                                "label": "Replace",
+                                "required": False,
+                                "selector": selector.TextSelector(),
+                            },
+                            RULE_CASE_SENSITIVE: {
+                                "label": "Case sensitive",
+                                "required": False,
+                                "selector": selector.BooleanSelector(),
+                            },
+                        },
+                    )
+                ),
+            }
+        ),
+        {"collapsed": True},
+    )
+
+
+def _markdown_section_schema(defaults: dict[str, Any]) -> Any:
+    """Return the Markdown Cleanup section schema."""
+    return form_section(
+        vol.Schema(
+            {
+                vol.Optional(
+                    CONF_MARKDOWN_CLEANUP_ENABLED,
+                    default=defaults.get(CONF_MARKDOWN_CLEANUP_ENABLED, False),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_MARKDOWN_STRIP_EMPHASIS,
+                    default=defaults.get(CONF_MARKDOWN_STRIP_EMPHASIS, True),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_MARKDOWN_STRIP_HEADINGS,
+                    default=defaults.get(CONF_MARKDOWN_STRIP_HEADINGS, True),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_MARKDOWN_STRIP_LIST_MARKERS,
+                    default=defaults.get(CONF_MARKDOWN_STRIP_LIST_MARKERS, True),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_MARKDOWN_STRIP_TABLES,
+                    default=defaults.get(CONF_MARKDOWN_STRIP_TABLES, True),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_MARKDOWN_STRIP_LINKS,
+                    default=defaults.get(CONF_MARKDOWN_STRIP_LINKS, True),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_MARKDOWN_REMOVE_PLAIN_URLS,
+                    default=defaults.get(CONF_MARKDOWN_REMOVE_PLAIN_URLS, False),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_MARKDOWN_STRIP_INLINE_CODE,
+                    default=defaults.get(CONF_MARKDOWN_STRIP_INLINE_CODE, True),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_MARKDOWN_REMOVE_CODE_BLOCKS,
+                    default=defaults.get(CONF_MARKDOWN_REMOVE_CODE_BLOCKS, False),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_MARKDOWN_STRIP_BLOCKQUOTES,
+                    default=defaults.get(CONF_MARKDOWN_STRIP_BLOCKQUOTES, True),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_MARKDOWN_REMOVE_DIVIDER_LINES,
+                    default=defaults.get(CONF_MARKDOWN_REMOVE_DIVIDER_LINES, True),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_MARKDOWN_STRIP_STRIKETHROUGH,
+                    default=defaults.get(CONF_MARKDOWN_STRIP_STRIKETHROUGH, True),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_MARKDOWN_STRIP_IMAGES,
+                    default=defaults.get(CONF_MARKDOWN_STRIP_IMAGES, True),
+                ): selector.BooleanSelector(),
+            }
+        ),
+        {"collapsed": True},
+    )
+
+
+def _date_section_schema(
+    date_locales: list[str],
+    date_locale_default: str,
+    date_renderer_default: str,
+    date_input_formats_default: list[str],
+    defaults: dict[str, Any],
+) -> Any:
+    """Return the Date Normalizer section schema."""
+    return form_section(
+        vol.Schema(
+            {
+                vol.Optional(
+                    CONF_DATE_NORMALIZER_ENABLED,
+                    default=defaults.get(CONF_DATE_NORMALIZER_ENABLED, False),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_DATE_LOCALE,
+                    default=date_locale_default,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=date_locales,
+                        mode="dropdown",
+                        sort=True,
+                    )
+                ),
+                vol.Optional(
+                    CONF_DATE_RENDERER,
+                    default=date_renderer_default,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=_date_renderer_options(),
+                        mode="dropdown",
+                    )
+                ),
+                vol.Optional(
+                    CONF_DATE_INPUT_FORMATS,
+                    default=date_input_formats_default,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=_date_input_format_options(),
+                        multiple=True,
+                        mode="list",
+                    )
+                ),
+            }
+        ),
+        {"collapsed": True},
+    )
+
+
+def _number_section_schema(
+    number_languages: list[str],
+    number_language_default: str,
+    defaults: dict[str, Any],
+) -> Any:
+    """Return the Number Normalizer section schema."""
+    return form_section(
+        vol.Schema(
+            {
+                vol.Optional(
+                    CONF_NUMBER_NORMALIZER_ENABLED,
+                    default=defaults.get(CONF_NUMBER_NORMALIZER_ENABLED, False),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_NUMBER_SPELLOUT_LANGUAGE,
+                    default=number_language_default,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=number_languages,
+                        mode="dropdown",
+                        sort=True,
+                    )
+                ),
+            }
+        ),
+        {"collapsed": True},
+    )
+
+
+def _streaming_section_schema(defaults: dict[str, Any]) -> Any:
+    """Return the Streaming section schema."""
+    return form_section(
+        vol.Schema(
+            {
+                vol.Optional(
+                    CONF_SAFETY_TAIL_CHARS,
+                    default=defaults.get(
+                        CONF_SAFETY_TAIL_CHARS, DEFAULT_SAFETY_TAIL_CHARS
+                    ),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=0, max=1024, mode="box")
+                ),
+                vol.Optional(
+                    CONF_MAX_BUFFER_CHARS,
+                    default=defaults.get(
+                        CONF_MAX_BUFFER_CHARS,
+                        DEFAULT_MAX_BUFFER_CHARS,
+                    ),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=1, max=10000, mode="box")
+                ),
+            }
+        ),
+        {"collapsed": True},
+    )
 
 
 def _date_input_format_options() -> list[dict[str, str]]:
@@ -521,7 +699,7 @@ def ws_start_preview(
     msg: dict[str, Any],
 ) -> None:
     """Generate a Normalization Preview for current form values."""
-    user_input = dict(msg["user_input"])
+    user_input = flatten_config_sections(dict(msg["user_input"]))
     preview_text = str(user_input.get(CONF_PREVIEW_TEXT, "") or "")
     if len(preview_text) > MAX_PREVIEW_TEXT_CHARS:
         _send_preview_input_error(

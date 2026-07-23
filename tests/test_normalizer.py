@@ -17,6 +17,12 @@ from custom_components.tts_proxy.const import (
     CONF_DATE_NORMALIZER_ENABLED,
     CONF_DATE_RENDERER,
     CONF_TARGET_TTS_ENTITY,
+    CONF_MARKDOWN_CLEANUP_ENABLED,
+    CONF_MARKDOWN_REMOVE_CODE_BLOCKS,
+    CONF_MARKDOWN_REMOVE_PLAIN_URLS,
+    CONF_MARKDOWN_STRIP_EMPHASIS,
+    CONF_MARKDOWN_STRIP_LINKS,
+    CONF_MARKDOWN_STRIP_TABLES,
     CONF_MAX_BUFFER_CHARS,
     CONF_NUMBER_NORMALIZER_ENABLED,
     CONF_NUMBER_SPELLOUT_LANGUAGE,
@@ -45,6 +51,9 @@ from custom_components.tts_proxy.const import (
     RULE_MODE_REGEX,
     RULE_NAME,
     RULE_REPLACE,
+    SECTION_GENERAL,
+    SECTION_MARKDOWN,
+    SECTION_NUMBERS,
 )
 from custom_components.tts_proxy.date_normalizer import (
     DateNormalizationError,
@@ -53,6 +62,7 @@ from custom_components.tts_proxy.date_normalizer import (
     default_date_renderer,
     parse_date_normalizer,
 )
+from custom_components.tts_proxy.markdown_normalizer import MarkdownCleanupNormalizer
 from custom_components.tts_proxy.normalizer import (
     NumberNormalizationError,
     NumberNormalizer,
@@ -140,6 +150,11 @@ def _german_number_normalizer() -> NumberNormalizer:
     )
 
 
+def _markdown_normalizer(**kwargs: bool) -> MarkdownCleanupNormalizer:
+    """Return an enabled Markdown Cleanup Normalizer."""
+    return MarkdownCleanupNormalizer(enabled=True, **kwargs)
+
+
 def _date_normalizer(
     *,
     locale: str = "de-DE",
@@ -167,6 +182,7 @@ async def _collect_stream(
     rules: list[ReplacementRule],
     number_normalizer: NumberNormalizer | None = None,
     date_normalizer: DateNormalizer | None = None,
+    markdown_normalizer: MarkdownCleanupNormalizer | None = None,
     **kwargs,
 ) -> list[str]:
     """Collect normalized stream chunks."""
@@ -177,6 +193,7 @@ async def _collect_stream(
             rules,
             number_normalizer,
             date_normalizer,
+            markdown_normalizer,
             **kwargs,
         )
     ]
@@ -326,6 +343,130 @@ class ReplacementRuleTests(unittest.TestCase):
         self.assertEqual(normalize_text("1 kWh", disabled_rules), "1 kWh")
 
 
+class MarkdownCleanupTests(unittest.TestCase):
+    """Markdown Cleanup Normalizer behavior."""
+
+    def test_disabled_normalizer_leaves_markdown_unchanged(self) -> None:
+        normalizer = MarkdownCleanupNormalizer(enabled=False)
+
+        self.assertEqual(
+            normalize_text("**Wichtig**", [], markdown_normalizer=normalizer),
+            "**Wichtig**",
+        )
+
+    def test_strips_common_inline_and_block_markers(self) -> None:
+        text = "\n".join(
+            [
+                "# Wetter",
+                "- [x] **Heute** ist `sensor.temp` aktiv",
+                "1. ~~Morgen~~ prüfen",
+                "> Hinweis",
+                "---",
+            ]
+        )
+
+        self.assertEqual(
+            normalize_text(text, [], markdown_normalizer=_markdown_normalizer()),
+            "\n".join(
+                [
+                    "Wetter",
+                    "Heute ist sensor.temp aktiv",
+                    "Morgen prüfen",
+                    "Hinweis",
+                ]
+            ),
+        )
+
+    def test_strips_links_images_and_optionally_plain_urls(self) -> None:
+        text = (
+            "[Details](https://example.com/weather) "
+            "![Karte](https://example.com/map.png) "
+            "[whispers] https://example.com/raw"
+        )
+
+        self.assertEqual(
+            normalize_text(text, [], markdown_normalizer=_markdown_normalizer()),
+            "Details Karte [whispers] https://example.com/raw",
+        )
+        self.assertEqual(
+            normalize_text(
+                text,
+                [],
+                markdown_normalizer=_markdown_normalizer(remove_plain_urls=True),
+            ),
+            "Details Karte [whispers] ",
+        )
+
+    def test_markdown_link_cleanup_does_not_strip_provider_control_tags(self) -> None:
+        self.assertEqual(
+            normalize_text(
+                "[whispers] [Details](https://example.com)",
+                [],
+                markdown_normalizer=_markdown_normalizer(),
+            ),
+            "[whispers] Details",
+        )
+
+    def test_markdown_cleanup_keeps_provider_control_tag_contents_opaque(self) -> None:
+        text = '[very **quiet**] <break time="1s"/> **laut**'
+
+        self.assertEqual(
+            normalize_text(text, [], markdown_normalizer=_markdown_normalizer()),
+            '[very **quiet**] <break time="1s"/> laut',
+        )
+
+    def test_strips_table_formatting_without_rendering_table_semantics(self) -> None:
+        text = "\n".join(
+            [
+                "| Tag | Höchst | Tiefst |",
+                "| --- | --- | --- |",
+                "| 21. Juli | 22 °C | 17 °C |",
+                "| 22. Juli | 24 °C | 11 °C |",
+            ]
+        )
+
+        self.assertEqual(
+            normalize_text(text, [], markdown_normalizer=_markdown_normalizer()),
+            "\n".join(
+                [
+                    "Tag. Höchst. Tiefst.",
+                    "21. Juli. 22 °C. 17 °C.",
+                    "22. Juli. 24 °C. 11 °C.",
+                ]
+            ),
+        )
+
+    def test_code_blocks_are_protected_unless_removal_is_enabled(self) -> None:
+        text = "Vorher\n```yaml\nsensor:\n  - platform: template\n```\nNachher"
+
+        self.assertEqual(
+            normalize_text(text, [], markdown_normalizer=_markdown_normalizer()),
+            text,
+        )
+        self.assertEqual(
+            normalize_text(
+                text,
+                [],
+                markdown_normalizer=_markdown_normalizer(remove_code_blocks=True),
+            ),
+            "Vorher\nNachher",
+        )
+
+    def test_markdown_cleanup_runs_after_rules_and_before_date_and_number(self) -> None:
+        rules = [ReplacementRule("morgen", "**21. Juli 2026**")]
+
+        self.assertEqual(
+            normalize_text(
+                "Termin morgen mit 3 Punkten.",
+                rules,
+                _german_number_normalizer(),
+                _date_normalizer(input_formats=(DATE_INPUT_FORMAT_DMY_MONTH_NAME,)),
+                _markdown_normalizer(),
+            ),
+            "Termin einundzwanzigster Juli zweitausendsechsundzwanzig mit drei Punkten.",
+        )
+
+
 class NumberNormalizerTests(unittest.TestCase):
     """Number Normalizer behavior."""
 
@@ -469,6 +610,32 @@ class NumberNormalizerTests(unittest.TestCase):
             self.assertEqual(
                 normalize_text_from_raw_config("Temp 53.4°C.", raw_config),
                 "Temp dreiundfünfzig Komma vier Grad.",
+            )
+
+    def test_normalizes_preview_text_from_unsaved_sectioned_raw_config(self) -> None:
+        raw_config = {
+            SECTION_MARKDOWN: {
+                CONF_MARKDOWN_CLEANUP_ENABLED: True,
+            },
+            SECTION_NUMBERS: {
+                CONF_NUMBER_NORMALIZER_ENABLED: True,
+                CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
+            },
+        }
+
+        with (
+            patch(
+                "custom_components.tts_proxy.normalizer.supported_number_spellout_languages",
+                return_value=("de",),
+            ),
+            patch(
+                "custom_components.tts_proxy.normalizer._spellout_number",
+                side_effect=_fake_german_number,
+            ),
+        ):
+            self.assertEqual(
+                normalize_text_from_raw_config("**3** Punkte", raw_config),
+                "drei Punkte",
             )
 
 
@@ -904,6 +1071,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.output_language, "de-DE")
         self.assertEqual(len(config.rules), 1)
         self.assertEqual(config.rules[0].name, "Energy unit")
+        self.assertFalse(config.markdown_normalizer.enabled)
         self.assertFalse(config.number_normalizer.enabled)
         self.assertEqual(config.number_normalizer.language, "de")
         self.assertEqual(config.safety_tail_chars, 64)
@@ -933,6 +1101,36 @@ class ConfigTests(unittest.TestCase):
         )
 
         self.assertNotIn(CONF_PREVIEW_TEXT, config)
+
+    def test_serializable_config_flattens_form_sections(self) -> None:
+        config = serializable_config(
+            {
+                "name": "German proxy",
+                CONF_TARGET_TTS_ENTITY: "tts.target",
+                SECTION_GENERAL: {
+                    CONF_OUTPUT_LANGUAGE: "de-DE",
+                },
+                SECTION_MARKDOWN: {
+                    CONF_MARKDOWN_CLEANUP_ENABLED: True,
+                    CONF_MARKDOWN_STRIP_EMPHASIS: True,
+                    CONF_MARKDOWN_STRIP_LINKS: True,
+                    CONF_MARKDOWN_STRIP_TABLES: False,
+                },
+                SECTION_NUMBERS: {
+                    CONF_NUMBER_NORMALIZER_ENABLED: False,
+                    CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
+                },
+            }
+        )
+
+        self.assertEqual(config[CONF_OUTPUT_LANGUAGE], "de-DE")
+        self.assertTrue(config[CONF_MARKDOWN_CLEANUP_ENABLED])
+        self.assertTrue(config[CONF_MARKDOWN_STRIP_EMPHASIS])
+        self.assertTrue(config[CONF_MARKDOWN_STRIP_LINKS])
+        self.assertFalse(config[CONF_MARKDOWN_STRIP_TABLES])
+        self.assertNotIn(SECTION_GENERAL, config)
+        self.assertNotIn(SECTION_MARKDOWN, config)
+        self.assertNotIn(SECTION_NUMBERS, config)
 
     def test_serializable_config_converts_legacy_rule_fields(self) -> None:
         config = serializable_config(

@@ -8,7 +8,7 @@ Users need a caller-agnostic Home Assistant TTS entity that can be selected anyw
 
 ## Solution
 
-Build a custom Home Assistant integration that exposes one Proxy TTS Entity per config entry. The Proxy TTS Entity is selected like any other TTS entity. It receives text, applies configured Replacement Rules, optional Date Normalizer processing, and optional Number Normalizer processing, then delegates directly to its configured Target TTS Entity.
+Build a custom Home Assistant integration that exposes one Proxy TTS Entity per config entry. The Proxy TTS Entity is selected like any other TTS entity. It receives text, applies configured Replacement Rules, optional Markdown Cleanup, optional Date Normalizer processing, and optional Number Normalizer processing, then delegates directly to its configured Target TTS Entity.
 
 The Proxy Configuration requires:
 
@@ -16,10 +16,11 @@ The Proxy Configuration requires:
 - Target TTS Entity
 - Output Language
 - Replacement Rules
+- Markdown Cleanup settings
 - Date Normalizer settings
 - Number Normalizer settings
-- Streaming Safety Tail
-- Streaming Buffer Limit
+- Minimal Lookahead Buffer Length
+- Maximal Buffer Limit
 
 The Proxy TTS Entity exposes exactly one Output Language and passes it to the Target TTS Entity during synthesis. Replacement Rules are not language-scoped in the MVP; the user creates one proxy entity for the intended input and output context.
 
@@ -53,8 +54,8 @@ For one-shot TTS, the proxy processes the full message and calls the Target TTS 
 24. As a Home Assistant user, I want replacements applied only to normal speech text around Provider Control Tags, so that control markup remains intact.
 25. As a Home Assistant user, I want streaming responses to remain streaming when the Target TTS Entity supports streaming, so that voice responses start promptly.
 26. As a Home Assistant user, I want the proxy to avoid per-chunk replacement bugs, so that split chunks like `53`, `.4`, `°`, `C` normalize correctly.
-27. As a Home Assistant user, I want a configurable Streaming Safety Tail, so that I can tune correctness for longer local patterns.
-28. As a Home Assistant user, I want a configurable Streaming Buffer Limit, so that streaming does not wait too long for ideal punctuation.
+27. As a Home Assistant user, I want a configurable Minimal Lookahead Buffer Length, so that I can tune correctness for longer local patterns.
+28. As a Home Assistant user, I want a configurable Maximal Buffer Limit, so that streaming does not wait too long for ideal punctuation.
 29. As a Home Assistant user, I want the proxy to fall back to non-streaming behavior when the Target TTS Entity cannot stream, so that behavior is honest and reliable.
 30. As a Home Assistant user, I want voice and audio-format options to pass through when the Target TTS Entity supports them, so that provider voices and satellite audio requirements still work.
 31. As a Home Assistant user, I want preferred audio output options preserved, so that Assist satellites and media players can receive compatible audio.
@@ -63,8 +64,13 @@ For one-shot TTS, the proxy processes the full message and calls the Target TTS 
 34. As a Home Assistant user, I want one-shot TTS cached by Home Assistant at the proxy level, so that repeated identical original input is efficient.
 35. As a Home Assistant user, I want no nested target-entity HA cache entry, so that caching and streaming behavior stay under the proxy boundary.
 36. As a Home Assistant user, I want a preview area in the options flow, so that I can test unsaved settings without generating audio.
-37. As a future user, I want rule presets to be possible later, so that common language/use-case replacements can be added without changing the MVP model.
-38. As a future user, I want template replacement mode to be possible later, so that advanced dynamic normalization can be explored after streaming and caching semantics are designed.
+37. As a Home Assistant user, I want optional Markdown Cleanup, so that LLM responses with Markdown syntax can be made safer for TTS services that speak formatting characters.
+38. As a Home Assistant user, I want Markdown Cleanup features to be individually enabled, so that I can keep syntax my Target TTS Entity already handles well.
+39. As a Home Assistant user, I want Markdown links reduced to their visible text, so that URLs do not dominate spoken output when a useful label exists.
+40. As a Home Assistant user, I want table formatting removed without pretending to fully explain tables, so that TTS output is less confusing while remaining language-neutral.
+41. As a Home Assistant user, I want isolated square-bracket Provider Control Tags preserved even when Markdown Cleanup is enabled, so that tags such as `[whispers]` still reach the Target TTS Entity.
+42. As a future user, I want rule presets to be possible later, so that common language/use-case replacements can be added without changing the MVP model.
+43. As a future user, I want template replacement mode to be possible later, so that advanced dynamic normalization can be explored after streaming and caching semantics are designed.
 
 ## Implementation Decisions
 
@@ -97,26 +103,30 @@ For one-shot TTS, the proxy processes the full message and calls the Target TTS 
 - Each Replacement Rule may have an optional display-only name.
 - The options flow displays Replacement Rule rows with Name as the primary row text and Find as the secondary row text, following Home Assistant ObjectSelector constraints.
 - Regex rules must compile successfully before Proxy Configuration or Proxy Reconfiguration is saved.
-- Date detection and number detection are separate optional normalizers that run after user-defined Replacement Rules.
+- Markdown Cleanup, date detection, and number detection are separate optional normalizers that run after user-defined Replacement Rules.
+- The normalization pipeline is Replacement Rules, then Markdown Cleanup, then Date Normalizer, then Number Normalizer.
+- Markdown Cleanup is disabled by default. When enabled, emphasis, headings, list markers, table formatting, Markdown links, inline code backticks, blockquote markers, divider lines, strikethrough markers, and image syntax cleanup are enabled by default; plain URL removal and fenced code block removal are opt-in.
+- Markdown Cleanup is a conservative cleanup normalizer, not a semantic Markdown-to-speech renderer. It does not announce table structure, infer column meaning, parse HTML tags, or process reference-style links.
 - The Number Normalizer spells simple leading-zero integers digit by digit, while one-separator decimals are normalized by removing leading integer zeroes and trailing fractional zeroes before spellout.
 - The German Date Renderer uses deterministic immediate left-context rules for clear article and preposition patterns, but does not use a general NLP parser.
 - Sloppy spaced numeric date formats such as `DD. MM. YYYY` are separate Date Input Formats. The German default enables the full-year spaced form, but not the no-year spaced form.
 - Numeric No-Year Date candidates separated only by whitespace are left unchanged; a visible separator or word between candidates allows normalization.
 - Locale-specific unit grammar remains user-defined through Replacement Rules.
+- The options flow groups settings into General, Replacement Rules, Markdown Cleanup, Date Normalizer, Number Normalizer, and Settings for TTS Streaming sections, then places Preview Input as the final top-level field directly before the Home Assistant preview output.
 - The options flow includes a preview area that uses current unsaved settings and does not generate audio.
-- Preserve Provider Control Tags as opaque segments. In the MVP, every `<...>` and `[...]` span is protected from Replacement Rules.
-- The streaming normalizer keeps a configurable Streaming Safety Tail, defaulting to 64 characters.
-- The streaming normalizer keeps a configurable Streaming Buffer Limit, defaulting to 500 characters.
-- The streaming normalizer flushes preferentially at sentence-like punctuation boundaries before the Streaming Safety Tail.
+- Preserve Provider Control Tags as opaque segments for Replacement Rules, Date Normalizer, and Number Normalizer. Markdown Cleanup may rewrite explicit Markdown constructs such as `[label](url)`, `![alt](url)`, and task-list markers, but isolated square-bracket spans and XML-like `<...>` spans remain protected.
+- The streaming normalizer keeps a configurable Minimal Lookahead Buffer Length, defaulting to 64 characters.
+- The streaming normalizer keeps a configurable Maximal Buffer Limit, defaulting to 500 characters.
+- The streaming normalizer flushes preferentially at sentence-like punctuation boundaries before the Minimal Lookahead Buffer Length.
 - Sentence-like punctuation requires boundary evidence such as following whitespace, newline, or stream end; decimal punctuation such as `53.4` must not be treated as a sentence split.
-- If no sentence-like boundary appears and pending text exceeds the Streaming Buffer Limit, flush up to a safe whitespace boundary while keeping the Streaming Safety Tail.
+- If no sentence-like boundary appears and pending text exceeds the Maximal Buffer Limit, flush up to a safe whitespace boundary while keeping the Minimal Lookahead Buffer Length.
 - When the input stream ends, normalize and flush all remaining pending text even if there is no trailing punctuation or whitespace.
 
 ## Testing Decisions
 
 The primary test seam is the Proxy TTS Entity contract with fake Target TTS Entities. Tests should call the same one-shot and streaming methods Home Assistant will call, and assert the resulting text passed to the fake target entity plus the reported audio behavior.
 
-The supporting test seam is the pure text normalizer. It should be tested directly for dense edge cases that would be hard to observe through entity-level tests: chunk splits, Provider Control Tags, punctuation boundaries, regex capture groups, disabled rules, case-sensitive behavior, date detection, number detection, and invalid regex validation.
+The supporting test seam is the pure text normalizer. It should be tested directly for dense edge cases that would be hard to observe through entity-level tests: chunk splits, Provider Control Tags, Markdown cleanup, punctuation boundaries, regex capture groups, disabled rules, case-sensitive behavior, date detection, number detection, and invalid regex validation.
 
 Good tests should verify externally visible behavior:
 
@@ -128,6 +138,7 @@ Good tests should verify externally visible behavior:
 - streaming support is reported only when the Target TTS Entity supports streaming
 - non-streaming Target TTS Entity receives full processed text
 - preview shows the processed text for current unsaved options
+- Markdown Cleanup preserves Provider Control Tags while simplifying configured Markdown syntax
 - Provider Control Tags are preserved and not modified by Replacement Rules
 - Passthrough TTS Options are accepted only when valid for the Target TTS Entity or HA preferred audio output
 - reconfiguration reloads capabilities while preserving proxy identity
@@ -141,10 +152,12 @@ Tests should stay focused on the Home Assistant-facing TTS entity behavior and t
 - Dynamic routing by language, voice, caller, media player, or Assist pipeline.
 - Proxy-to-proxy delegation in the MVP.
 - Built-in locale-specific unit grammar beyond user-defined Replacement Rules.
+- Full semantic Markdown-to-speech rendering.
+- HTML cleanup or structured XML parsing beyond preserving `<...>` spans as opaque text.
 - Rule Presets.
 - HA template replacement mode.
 - Audio preview or a separate preview service/action.
-- SSML generation or structured XML parsing beyond preserving `<...>` spans as opaque text.
+- SSML generation.
 - Provider-specific semantic parsing of square-bracket audio tags.
 - Custom frontend beyond native Home Assistant config/options flow controls.
 

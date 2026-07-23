@@ -11,6 +11,19 @@ from .const import (
     CONF_DATE_NORMALIZER_ENABLED,
     CONF_DATE_RENDERER,
     CONF_TARGET_TTS_ENTITY,
+    CONF_MARKDOWN_CLEANUP_ENABLED,
+    CONF_MARKDOWN_REMOVE_CODE_BLOCKS,
+    CONF_MARKDOWN_REMOVE_DIVIDER_LINES,
+    CONF_MARKDOWN_REMOVE_PLAIN_URLS,
+    CONF_MARKDOWN_STRIP_BLOCKQUOTES,
+    CONF_MARKDOWN_STRIP_EMPHASIS,
+    CONF_MARKDOWN_STRIP_HEADINGS,
+    CONF_MARKDOWN_STRIP_IMAGES,
+    CONF_MARKDOWN_STRIP_INLINE_CODE,
+    CONF_MARKDOWN_STRIP_LINKS,
+    CONF_MARKDOWN_STRIP_LIST_MARKERS,
+    CONF_MARKDOWN_STRIP_STRIKETHROUGH,
+    CONF_MARKDOWN_STRIP_TABLES,
     CONF_MAX_BUFFER_CHARS,
     CONF_NUMBER_NORMALIZER_ENABLED,
     CONF_NUMBER_SPELLOUT_LANGUAGE,
@@ -30,6 +43,11 @@ from .const import (
     RULE_MODE_LITERAL,
     RULE_NAME,
     RULE_REPLACE,
+)
+from .form_data import flatten_config_sections
+from .markdown_normalizer import (
+    MarkdownCleanupNormalizer,
+    parse_markdown_cleanup_normalizer,
 )
 from .normalizer import (
     NumberNormalizer,
@@ -51,6 +69,7 @@ class ProxyConfig:
     target_tts_entity: str
     output_language: str
     rules: tuple[ReplacementRule, ...]
+    markdown_normalizer: MarkdownCleanupNormalizer
     date_normalizer: DateNormalizer
     number_normalizer: NumberNormalizer
     safety_tail_chars: int
@@ -67,6 +86,7 @@ def merged_entry_config(entry: Any) -> dict[str, Any]:
 
 def parse_proxy_config(raw_config: dict[str, Any]) -> ProxyConfig:
     """Parse and validate Proxy Configuration."""
+    raw_config = flatten_config_sections(raw_config)
     safety_tail_chars = int(
         raw_config.get(CONF_SAFETY_TAIL_CHARS, DEFAULT_SAFETY_TAIL_CHARS)
     )
@@ -89,6 +109,7 @@ def parse_proxy_config(raw_config: dict[str, Any]) -> ProxyConfig:
         target_tts_entity=target_tts_entity,
         output_language=output_language,
         rules=parse_rules(raw_config.get(CONF_REPLACEMENT_RULES, [])),
+        markdown_normalizer=parse_markdown_cleanup_normalizer(raw_config),
         date_normalizer=parse_date_normalizer(raw_config),
         number_normalizer=parse_number_normalizer(raw_config),
         safety_tail_chars=safety_tail_chars,
@@ -104,6 +125,33 @@ def serializable_config(raw_config: dict[str, Any]) -> dict[str, Any]:
         CONF_TARGET_TTS_ENTITY: config.target_tts_entity,
         CONF_OUTPUT_LANGUAGE: config.output_language,
         CONF_REPLACEMENT_RULES: serializable_replacement_rules(config.rules),
+        CONF_MARKDOWN_CLEANUP_ENABLED: config.markdown_normalizer.enabled,
+        CONF_MARKDOWN_STRIP_EMPHASIS: config.markdown_normalizer.strip_emphasis,
+        CONF_MARKDOWN_STRIP_HEADINGS: config.markdown_normalizer.strip_headings,
+        CONF_MARKDOWN_STRIP_LIST_MARKERS: (
+            config.markdown_normalizer.strip_list_markers
+        ),
+        CONF_MARKDOWN_STRIP_TABLES: config.markdown_normalizer.strip_tables,
+        CONF_MARKDOWN_STRIP_LINKS: config.markdown_normalizer.strip_links,
+        CONF_MARKDOWN_REMOVE_PLAIN_URLS: (
+            config.markdown_normalizer.remove_plain_urls
+        ),
+        CONF_MARKDOWN_STRIP_INLINE_CODE: (
+            config.markdown_normalizer.strip_inline_code
+        ),
+        CONF_MARKDOWN_REMOVE_CODE_BLOCKS: (
+            config.markdown_normalizer.remove_code_blocks
+        ),
+        CONF_MARKDOWN_STRIP_BLOCKQUOTES: (
+            config.markdown_normalizer.strip_blockquotes
+        ),
+        CONF_MARKDOWN_REMOVE_DIVIDER_LINES: (
+            config.markdown_normalizer.remove_divider_lines
+        ),
+        CONF_MARKDOWN_STRIP_STRIKETHROUGH: (
+            config.markdown_normalizer.strip_strikethrough
+        ),
+        CONF_MARKDOWN_STRIP_IMAGES: config.markdown_normalizer.strip_images,
         CONF_DATE_NORMALIZER_ENABLED: config.date_normalizer.enabled,
         CONF_DATE_LOCALE: config.date_normalizer.locale,
         CONF_DATE_RENDERER: config.date_normalizer.renderer,
@@ -117,7 +165,7 @@ def serializable_config(raw_config: dict[str, Any]) -> dict[str, Any]:
 
 def form_defaults(raw_config: dict[str, Any] | None) -> dict[str, Any]:
     """Return config data safe to use as config-flow form defaults."""
-    defaults = dict(raw_config or {})
+    defaults = flatten_config_sections(raw_config)
     defaults.pop(CONF_PREVIEW_TEXT, None)
     if CONF_REPLACEMENT_RULES in defaults:
         defaults[CONF_REPLACEMENT_RULES] = [

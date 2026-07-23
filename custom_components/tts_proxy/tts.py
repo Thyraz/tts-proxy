@@ -118,8 +118,9 @@ class ProxyTextToSpeechEntity(TextToSpeechEntity):
         normalized = normalize_text(
             message,
             self._config.rules,
-            self._config.number_normalizer,
-            self._config.date_normalizer,
+            markdown_normalizer=self._config.markdown_normalizer,
+            number_normalizer=self._config.number_normalizer,
+            date_normalizer=self._config.date_normalizer,
         )
         return await target_entity.async_internal_get_tts_audio(
             normalized,
@@ -155,8 +156,9 @@ class ProxyTextToSpeechEntity(TextToSpeechEntity):
         normalized_stream = normalize_stream(
             request.message_gen,
             self._config.rules,
-            self._config.number_normalizer,
-            self._config.date_normalizer,
+            markdown_normalizer=self._config.markdown_normalizer,
+            number_normalizer=self._config.number_normalizer,
+            date_normalizer=self._config.date_normalizer,
             safety_tail_chars=self._config.safety_tail_chars,
             max_buffer_chars=self._config.max_buffer_chars,
         )
