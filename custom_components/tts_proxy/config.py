@@ -37,6 +37,9 @@ from .const import (
     CONF_PREVIEW_TEXT,
     CONF_REPLACEMENT_RULES,
     CONF_SAFETY_TAIL_CHARS,
+    CONF_TEXT_CLEANUP_REPLACE_LINE_BREAKS,
+    CONF_UNIT_LOCALE,
+    CONF_UNIT_NORMALIZER_ENABLED,
     DEFAULT_MAX_BUFFER_CHARS,
     DEFAULT_NAME,
     DEFAULT_SAFETY_TAIL_CHARS,
@@ -56,6 +59,11 @@ from .markdown_normalizer import (
     MarkdownCleanupNormalizer,
     parse_markdown_cleanup_normalizer,
 )
+from .text_cleanup_normalizer import (
+    TextCleanupNormalizer,
+    parse_text_cleanup_normalizer,
+)
+from .unit_normalizer import UnitNormalizer, parse_unit_normalizer
 from .normalizer import (
     NumberNormalizer,
     ReplacementRule,
@@ -77,8 +85,10 @@ class ProxyConfig:
     output_language: str
     rules: tuple[ReplacementRule, ...]
     markdown_normalizer: MarkdownCleanupNormalizer
+    text_cleanup_normalizer: TextCleanupNormalizer
     emoji_normalizer: EmojiNormalizer
     date_normalizer: DateNormalizer
+    unit_normalizer: UnitNormalizer
     number_normalizer: NumberNormalizer
     safety_tail_chars: int
     max_buffer_chars: int
@@ -118,8 +128,10 @@ def parse_proxy_config(raw_config: dict[str, Any]) -> ProxyConfig:
         output_language=output_language,
         rules=parse_rules(raw_config.get(CONF_REPLACEMENT_RULES, [])),
         markdown_normalizer=parse_markdown_cleanup_normalizer(raw_config),
+        text_cleanup_normalizer=parse_text_cleanup_normalizer(raw_config),
         emoji_normalizer=parse_emoji_normalizer(raw_config),
         date_normalizer=parse_date_normalizer(raw_config),
+        unit_normalizer=parse_unit_normalizer(raw_config),
         number_normalizer=parse_number_normalizer(raw_config),
         safety_tail_chars=safety_tail_chars,
         max_buffer_chars=max_buffer_chars,
@@ -161,6 +173,9 @@ def serializable_config(raw_config: dict[str, Any]) -> dict[str, Any]:
             config.markdown_normalizer.strip_strikethrough
         ),
         CONF_MARKDOWN_STRIP_IMAGES: config.markdown_normalizer.strip_images,
+        CONF_TEXT_CLEANUP_REPLACE_LINE_BREAKS: (
+            config.text_cleanup_normalizer.replace_line_breaks
+        ),
         CONF_EMOJI_NORMALIZER_ENABLED: config.emoji_normalizer.enabled,
         CONF_EMOJI_HANDLING: config.emoji_normalizer.handling.value,
         CONF_EMOJI_LANGUAGE: config.emoji_normalizer.language,
@@ -173,6 +188,8 @@ def serializable_config(raw_config: dict[str, Any]) -> dict[str, Any]:
         ),
         CONF_DATE_STANDALONE_YEAR_MIN: config.date_normalizer.standalone_year_min,
         CONF_DATE_STANDALONE_YEAR_MAX: config.date_normalizer.standalone_year_max,
+        CONF_UNIT_NORMALIZER_ENABLED: config.unit_normalizer.enabled,
+        CONF_UNIT_LOCALE: config.unit_normalizer.locale,
         CONF_NUMBER_NORMALIZER_ENABLED: config.number_normalizer.enabled,
         CONF_NUMBER_SPELLOUT_LANGUAGE: config.number_normalizer.language,
         CONF_SAFETY_TAIL_CHARS: config.safety_tail_chars,

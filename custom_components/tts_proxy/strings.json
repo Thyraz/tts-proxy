@@ -52,6 +52,12 @@
               "markdown_cleanup_enabled": "Subrules below are only applied if this global switch is enabled."
             }
           },
+          "text_cleanup": {
+            "name": "Text Cleanup",
+            "data": {
+              "text_cleanup_replace_line_breaks": "Replace line breaks with spaces"
+            }
+          },
           "emoji": {
             "name": "Emoji Normalizer",
             "data": {
@@ -70,6 +76,13 @@
               "date_standalone_years_enabled": "Enable Standalone Year Detection",
               "date_standalone_year_min": "Minimum Standalone Year",
               "date_standalone_year_max": "Maximum Standalone Year"
+            }
+          },
+          "units": {
+            "name": "Unit Normalizer",
+            "data": {
+              "unit_normalizer_enabled": "Enable Unit Normalizer",
+              "unit_locale": "Unit Locale"
             }
           },
           "numbers": {
@@ -95,6 +108,7 @@
       "invalid_rule": "One or more Replacement Rules are invalid.",
       "invalid_emoji_normalizer": "Select a supported Emoji Language when Spell out emoji is enabled.",
       "invalid_date_normalizer": "Check Date Locale, Date Renderer, Date Input Formats, and Standalone Year range.",
+      "invalid_unit_normalizer": "Select a Unit Locale when the Unit Normalizer is enabled.",
       "invalid_number_normalizer": "Select a supported Number Spellout Language when the Number Normalizer is enabled.",
       "invalid_buffer_config": "Maximal Buffer Limit must be greater than Minimal Lookahead Buffer Length."
     }
@@ -151,6 +165,12 @@
               "markdown_cleanup_enabled": "Subrules below are only applied if this global switch is enabled."
             }
           },
+          "text_cleanup": {
+            "name": "Text Cleanup",
+            "data": {
+              "text_cleanup_replace_line_breaks": "Replace line breaks with spaces"
+            }
+          },
           "emoji": {
             "name": "Emoji Normalizer",
             "data": {
@@ -169,6 +189,13 @@
               "date_standalone_years_enabled": "Enable Standalone Year Detection",
               "date_standalone_year_min": "Minimum Standalone Year",
               "date_standalone_year_max": "Maximum Standalone Year"
+            }
+          },
+          "units": {
+            "name": "Unit Normalizer",
+            "data": {
+              "unit_normalizer_enabled": "Enable Unit Normalizer",
+              "unit_locale": "Unit Locale"
             }
           },
           "numbers": {
@@ -194,6 +221,7 @@
       "invalid_rule": "One or more Replacement Rules are invalid.",
       "invalid_emoji_normalizer": "Select a supported Emoji Language when Spell out emoji is enabled.",
       "invalid_date_normalizer": "Check Date Locale, Date Renderer, Date Input Formats, and Standalone Year range.",
+      "invalid_unit_normalizer": "Select a Unit Locale when the Unit Normalizer is enabled.",
       "invalid_number_normalizer": "Select a supported Number Spellout Language when the Number Normalizer is enabled.",
       "invalid_buffer_config": "Maximal Buffer Limit must be greater than Minimal Lookahead Buffer Length."
     }

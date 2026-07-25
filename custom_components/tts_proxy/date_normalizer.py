@@ -176,11 +176,15 @@ _STANDALONE_YEAR_SKIP_WORD_PAIRS = {
 }
 _STANDALONE_YEAR_UNIT_RE = re.compile(
     r"\s*(?:"
-    r"km/h|kwh|hpa|mbar|ppm|mA|kw|wh|mm|cm|km|lx|lm|"
-    r"°c|°f|w|v|a|k|m|%|"
+    r"mbit/s|km/h|kmh|kwh|hpa|mbar|m/s|ppm|ma|kw|wh|"
+    r"kb|mb|gb|mm|cm|bar|km|lx|lm|"
+    r"°c|°f|w|v|a|b|k|m|%|"
     r"kilowattstunden|kilowatts?|watts?|watt|volt|ampere|"
     r"degrees?|grad|prozent|percent|lux|lumen|kelvin|"
-    r"millimeters?|millimetres?|meters?|metres?"
+    r"hectopascals?|millibars?|bars?|bytes?|"
+    r"kilobytes?|megabytes?|gigabytes?|megabits?|"
+    r"kilometers?|kilometres?|millimeters?|millimetres?|"
+    r"meters?|metres?"
     r")(?=$|[\s,.;:!?)\]}])",
     re.IGNORECASE,
 )

@@ -8,8 +8,10 @@ It can apply replacements based on:
 
 - user-defined rules using string literals or regular expressions
 - Markdown cleanup
+- text cleanup
 - emoji detection
 - date detection
+- unit detection
 - number detection
 
 This happens before the target TTS service receives the text.
@@ -18,6 +20,8 @@ Date detection can also spell standalone years within a configured range.
 Some sanity checks are done, to identify numbers that are clearly no years (like 1920 Watts).
 
 German date output also uses a few simple context rules for endings like `dreizehnte` vs `dreizehnter`.
+
+Unit detection covers common smart-home symbols like `°C`, `%`, `W`, `kWh`, `km/h`, `kmh`, `hPa`, and `Mbit/s`. German and English have curated wording; other locales use a conservative fallback.
 
 TTS Proxy supports streaming and non-streaming TTS integrations.
 
@@ -46,7 +50,7 @@ Then restart Home Assistant.
 2. Add the **TTS Proxy** integration.
 3. Choose the target TTS entity that should receive the processed text.
 4. Select the output language.
-5. Add replacement rules, optionally name them, and enable Markdown cleanup, emoji handling, date detection, or number detection if needed.
+5. Add replacement rules, optionally name them, and enable Markdown cleanup, text cleanup, emoji handling, date detection, unit detection, or number detection if needed.
 
 Use the preview area in the options dialog to test the processed text before saving.
 

@@ -36,6 +36,11 @@ from .markdown_normalizer import (
     MarkdownCleanupNormalizer,
     parse_markdown_cleanup_normalizer,
 )
+from .text_cleanup_normalizer import (
+    TextCleanupNormalizer,
+    parse_text_cleanup_normalizer,
+)
+from .unit_normalizer import UnitNormalizer, parse_unit_normalizer
 
 _CONTROL_TAG_RE = re.compile(r"(<[^>]*>|\[[^\]]*\])")
 _NUMERIC_TEXT_RE = re.compile(r"-?\d+(?:[.,]\d+)?")
@@ -242,7 +247,9 @@ def normalize_text_from_raw_config(text: str, raw_config: Mapping[str, Any]) -> 
         text,
         parse_rules(raw_config.get(CONF_REPLACEMENT_RULES, [])),
         markdown_normalizer=parse_markdown_cleanup_normalizer(raw_config),
+        text_cleanup_normalizer=parse_text_cleanup_normalizer(raw_config),
         emoji_normalizer=parse_emoji_normalizer(raw_config),
+        unit_normalizer=parse_unit_normalizer(raw_config),
         number_normalizer=parse_number_normalizer(raw_config),
         date_normalizer=parse_date_normalizer(raw_config),
     )
@@ -275,6 +282,8 @@ def normalize_text(
     date_normalizer: DateNormalizer | None = None,
     markdown_normalizer: MarkdownCleanupNormalizer | None = None,
     emoji_normalizer: EmojiNormalizer | None = None,
+    text_cleanup_normalizer: TextCleanupNormalizer | None = None,
+    unit_normalizer: UnitNormalizer | None = None,
 ) -> str:
     """Normalize text while preserving Provider Control Tags."""
     if not text:
@@ -286,13 +295,19 @@ def normalize_text(
     )
     if markdown_normalizer is not None:
         normalized = markdown_normalizer.normalize(normalized)
+    if text_cleanup_normalizer is not None:
+        normalized = _normalize_preserving_control_tags(
+            normalized,
+            text_cleanup_normalizer.normalize,
+        )
     return _normalize_preserving_control_tags(
         normalized,
-        lambda segment: _apply_date_and_number_normalizers(
+        lambda segment: _apply_builtin_normalizers(
             segment,
             number_normalizer,
             date_normalizer,
             emoji_normalizer,
+            unit_normalizer,
         ),
     )
 
@@ -323,6 +338,8 @@ async def normalize_stream(
     date_normalizer: DateNormalizer | None = None,
     markdown_normalizer: MarkdownCleanupNormalizer | None = None,
     emoji_normalizer: EmojiNormalizer | None = None,
+    text_cleanup_normalizer: TextCleanupNormalizer | None = None,
+    unit_normalizer: UnitNormalizer | None = None,
     *,
     safety_tail_chars: int = DEFAULT_SAFETY_TAIL_CHARS,
     max_buffer_chars: int = DEFAULT_MAX_BUFFER_CHARS,
@@ -353,6 +370,8 @@ async def normalize_stream(
                     number_normalizer=number_normalizer,
                     date_normalizer=date_normalizer,
                     emoji_normalizer=emoji_normalizer,
+                    text_cleanup_normalizer=text_cleanup_normalizer,
+                    unit_normalizer=unit_normalizer,
                 )
 
     if pending:
@@ -363,6 +382,8 @@ async def normalize_stream(
             number_normalizer=number_normalizer,
             date_normalizer=date_normalizer,
             emoji_normalizer=emoji_normalizer,
+            text_cleanup_normalizer=text_cleanup_normalizer,
+            unit_normalizer=unit_normalizer,
         )
 
 
@@ -389,18 +410,21 @@ def _apply_rules(text: str, rules: Iterable[ReplacementRule]) -> str:
     return normalized
 
 
-def _apply_date_and_number_normalizers(
+def _apply_builtin_normalizers(
     text: str,
     number_normalizer: NumberNormalizer | None,
     date_normalizer: DateNormalizer | None,
     emoji_normalizer: EmojiNormalizer | None,
+    unit_normalizer: UnitNormalizer | None,
 ) -> str:
-    """Apply Emoji Normalizer, Date Normalizer, then Number Normalizer."""
+    """Apply Emoji, Date, Unit, then Number Normalizers."""
     normalized = text
     if emoji_normalizer is not None:
         normalized = emoji_normalizer.normalize(normalized)
     if date_normalizer is not None:
         normalized = date_normalizer.normalize(normalized)
+    if unit_normalizer is not None:
+        normalized = unit_normalizer.normalize(normalized)
     if number_normalizer is not None:
         normalized = number_normalizer.normalize(normalized)
     return normalized

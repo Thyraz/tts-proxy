@@ -1,6 +1,6 @@
 # Curated Date Normalizer Renderers
 
-Date normalization is implemented as a separate optional normalizer that runs after Replacement Rules and before the Number Normalizer. The MVP uses curated German and English renderers with month-name output and explicit Date Input Formats, while other languages fall back to numeric spoken date parts.
+Date normalization is implemented as a separate optional normalizer that runs after Replacement Rules, Markdown Cleanup, Text Cleanup, and Emoji Normalizer, and before the Unit Normalizer and Number Normalizer. The MVP uses curated German and English renderers with month-name output and explicit Date Input Formats, while other languages fall back to numeric spoken date parts.
 
 **Consequences**
 

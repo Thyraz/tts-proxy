@@ -36,6 +36,9 @@ from custom_components.tts_proxy.const import (
     CONF_PREVIEW_TEXT,
     CONF_REPLACEMENT_RULES,
     CONF_SAFETY_TAIL_CHARS,
+    CONF_TEXT_CLEANUP_REPLACE_LINE_BREAKS,
+    CONF_UNIT_LOCALE,
+    CONF_UNIT_NORMALIZER_ENABLED,
     DATE_INPUT_FORMAT_DMY_DOT,
     DATE_INPUT_FORMAT_DMY_DOT_NO_YEAR,
     DATE_INPUT_FORMAT_DMY_DOT_SPACED,
@@ -64,6 +67,8 @@ from custom_components.tts_proxy.const import (
     SECTION_EMOJI,
     SECTION_MARKDOWN,
     SECTION_NUMBERS,
+    SECTION_TEXT_CLEANUP,
+    SECTION_UNITS,
 )
 from custom_components.tts_proxy.date_normalizer import (
     DateNormalizationError,
@@ -79,6 +84,14 @@ from custom_components.tts_proxy.emoji_normalizer import (
     parse_emoji_normalizer,
 )
 from custom_components.tts_proxy.markdown_normalizer import MarkdownCleanupNormalizer
+from custom_components.tts_proxy.text_cleanup_normalizer import TextCleanupNormalizer
+from custom_components.tts_proxy.unit_normalizer import (
+    UnitNormalizationError,
+    UnitNormalizer,
+    default_unit_locale,
+    parse_unit_normalizer,
+    supported_unit_locales,
+)
 from custom_components.tts_proxy.normalizer import (
     NumberNormalizationError,
     NumberNormalizer,
@@ -203,6 +216,11 @@ def _markdown_normalizer(**kwargs: bool) -> MarkdownCleanupNormalizer:
     return MarkdownCleanupNormalizer(enabled=True, **kwargs)
 
 
+def _text_cleanup_normalizer(**kwargs: bool) -> TextCleanupNormalizer:
+    """Return a Text Cleanup Normalizer."""
+    return TextCleanupNormalizer(**kwargs)
+
+
 def _emoji_normalizer(
     *,
     handling: str = EMOJI_HANDLING_SPELLOUT,
@@ -245,12 +263,19 @@ def _date_normalizer(
     )
 
 
+def _unit_normalizer(*, locale: str = "de-DE") -> UnitNormalizer:
+    """Return an enabled Unit Normalizer."""
+    return UnitNormalizer(enabled=True, locale=locale)
+
+
 async def _collect_stream(
     values: list[str],
     rules: list[ReplacementRule],
     number_normalizer: NumberNormalizer | None = None,
     date_normalizer: DateNormalizer | None = None,
     markdown_normalizer: MarkdownCleanupNormalizer | None = None,
+    text_cleanup_normalizer: TextCleanupNormalizer | None = None,
+    unit_normalizer: UnitNormalizer | None = None,
     **kwargs,
 ) -> list[str]:
     """Collect normalized stream chunks."""
@@ -262,6 +287,8 @@ async def _collect_stream(
             number_normalizer,
             date_normalizer,
             markdown_normalizer,
+            text_cleanup_normalizer=text_cleanup_normalizer,
+            unit_normalizer=unit_normalizer,
             **kwargs,
         )
     ]
@@ -532,6 +559,85 @@ class MarkdownCleanupTests(unittest.TestCase):
                 _markdown_normalizer(),
             ),
             "Termin einundzwanzigster Juli zweitausendsechsundzwanzig mit drei Punkten.",
+        )
+
+
+class TextCleanupTests(unittest.TestCase):
+    """Text Cleanup Normalizer behavior."""
+
+    def test_optionally_replaces_line_breaks_with_spaces(self) -> None:
+        text = "Heute\nMorgen\r\n\tÜbermorgen\rFertig"
+
+        self.assertEqual(
+            normalize_text(
+                text,
+                [],
+                text_cleanup_normalizer=_text_cleanup_normalizer(
+                    replace_line_breaks=True,
+                ),
+            ),
+            "Heute Morgen Übermorgen Fertig",
+        )
+
+    def test_line_break_replacement_runs_after_markdown_cleanup(self) -> None:
+        text = "\n".join(
+            [
+                "- **Heute**",
+                "- Morgen",
+                "| Tag | Höchst |",
+                "| --- | --- |",
+                "| 21. Juli | 22 °C |",
+            ]
+        )
+
+        self.assertEqual(
+            normalize_text(
+                text,
+                [],
+                markdown_normalizer=_markdown_normalizer(),
+                text_cleanup_normalizer=_text_cleanup_normalizer(
+                    replace_line_breaks=True,
+                ),
+            ),
+            "Heute Morgen Tag. Höchst. 21. Juli. 22 °C.",
+        )
+
+    def test_text_cleanup_runs_without_markdown_cleanup(self) -> None:
+        self.assertEqual(
+            normalize_text(
+                "**Heute**\nMorgen",
+                [],
+                text_cleanup_normalizer=_text_cleanup_normalizer(
+                    replace_line_breaks=True,
+                ),
+            ),
+            "**Heute** Morgen",
+        )
+
+    def test_text_cleanup_preserves_provider_control_tags(self) -> None:
+        self.assertEqual(
+            normalize_text(
+                "[very\nquiet]\nText <tag\nvalue=\"1\"/>",
+                [],
+                text_cleanup_normalizer=_text_cleanup_normalizer(
+                    replace_line_breaks=True,
+                ),
+            ),
+            "[very\nquiet] Text <tag\nvalue=\"1\"/>",
+        )
+
+    def test_normalizes_preview_text_from_unsaved_sectioned_text_cleanup_config(
+        self,
+    ) -> None:
+        raw_config = {
+            SECTION_TEXT_CLEANUP: {
+                CONF_TEXT_CLEANUP_REPLACE_LINE_BREAKS: True,
+            },
+        }
+
+        self.assertEqual(
+            normalize_text_from_raw_config("Heute\nMorgen", raw_config),
+            "Heute Morgen",
         )
 
 
@@ -884,6 +990,190 @@ class NumberNormalizerTests(unittest.TestCase):
             )
 
 
+class UnitNormalizerTests(unittest.TestCase):
+    """Unit Normalizer behavior."""
+
+    def test_disabled_normalizer_leaves_units_unchanged(self) -> None:
+        normalizer = UnitNormalizer(enabled=False, locale="de-DE")
+
+        self.assertEqual(normalizer.normalize("Temp 30°C."), "Temp 30°C.")
+
+    def test_german_units_run_before_number_normalizer(self) -> None:
+        self.assertEqual(
+            normalize_text(
+                "Temp 30°C.",
+                [],
+                _german_number_normalizer(),
+                unit_normalizer=_unit_normalizer(locale="de-DE"),
+            ),
+            "Temp dreißig Grad.",
+        )
+
+    def test_german_temperature_and_percent_units(self) -> None:
+        normalizer = _unit_normalizer(locale="de-DE")
+
+        self.assertEqual(
+            normalizer.normalize("Temp 25°C und -5°F, Wolken 92%."),
+            "Temp 25 Grad und -5 Grad Fahrenheit, Wolken 92 Prozent.",
+        )
+
+    def test_german_power_and_energy_units_with_common_aliases(self) -> None:
+        normalizer = _unit_normalizer(locale="de-DE")
+
+        self.assertEqual(
+            normalizer.normalize("Verbrauch 1kWh, 2 KWh, 3kwH, 30w und 4 kW."),
+            (
+                "Verbrauch 1 Kilowattstunde, 2 Kilowattstunden, "
+                "3 Kilowattstunden, 30 Watt und 4 Kilowatt."
+            ),
+        )
+
+    def test_german_smart_home_unit_catalog(self) -> None:
+        normalizer = _unit_normalizer(locale="de-DE")
+
+        self.assertEqual(
+            normalizer.normalize(
+                "Wind 12km/h, 14kmh, 3m/s; Druck 990hPa, 1000mbar, "
+                "1bar; Licht 20lx, 300lm; Daten 4MB, 1GB, 2Mbit/s."
+            ),
+            (
+                "Wind 12 Kilometer pro Stunde, 14 Kilometer pro Stunde, "
+                "3 Meter pro Sekunde; Druck 990 Hektopascal, 1000 Millibar, "
+                "1 Bar; Licht 20 Lux, 300 Lumen; Daten 4 Megabyte, "
+                "1 Gigabyte, 2 Megabit pro Sekunde."
+            ),
+        )
+
+    def test_english_temperature_uses_locale_normal_scale(self) -> None:
+        us = _unit_normalizer(locale="en-US")
+        gb = _unit_normalizer(locale="en-GB")
+
+        self.assertEqual(
+            us.normalize("Temp 1°F, 2°F, 1°C, 2°C."),
+            "Temp 1 degree, 2 degrees, 1 degree Celsius, 2 degrees Celsius.",
+        )
+        self.assertEqual(
+            gb.normalize("Temp 1°C, 2°C, 1°F, 2°F."),
+            "Temp 1 degree, 2 degrees, 1 degree Fahrenheit, 2 degrees Fahrenheit.",
+        )
+
+    def test_english_units_use_singular_and_plural_forms(self) -> None:
+        normalizer = _unit_normalizer(locale="en-GB")
+
+        self.assertEqual(
+            normalizer.normalize("Energy 1kWh, 2kWh; Power -1W, 2W."),
+            "Energy 1 kilowatt hour, 2 kilowatt hours; Power -1 watt, 2 watts.",
+        )
+
+    def test_generic_fallback_keeps_temperature_scale_explicit(self) -> None:
+        normalizer = _unit_normalizer(locale="fr-FR")
+
+        self.assertEqual(
+            normalizer.normalize("Temp 1°C, 2°F, 3kWh."),
+            "Temp 1 degree Celsius, 2 degrees Fahrenheit, 3 kilowatt hours.",
+        )
+
+    def test_unit_detection_uses_strict_boundaries(self) -> None:
+        normalizer = _unit_normalizer(locale="de-DE")
+        text = "Weg 5m, Temp 25C, sensor_30W, abc30W, 30Wert, IP 192.168.1.1W."
+
+        self.assertEqual(normalizer.normalize(text), text)
+
+    def test_unit_detection_skips_structured_numbers(self) -> None:
+        normalizer = _unit_normalizer(locale="de-DE")
+        text = "Version 1.2.3W, IP 192.168.1.1W, Wert 1,2,3kWh."
+
+        self.assertEqual(normalizer.normalize(text), text)
+
+    def test_unit_detection_skips_grouped_numbers(self) -> None:
+        normalizer = _unit_normalizer(locale="de-DE")
+
+        self.assertEqual(
+            normalizer.normalize("Leistung 1.000W, 1,000kWh und 0.001W."),
+            "Leistung 1.000W, 1,000kWh und 0.001 Watt.",
+        )
+
+    def test_unit_normalizer_keeps_leading_zero_number_text(self) -> None:
+        normalizer = _unit_normalizer(locale="de-DE")
+
+        self.assertEqual(
+            normalizer.normalize("Werte 007W und 0007.1234W."),
+            "Werte 007 Watt und 0007.1234 Watt.",
+        )
+
+    def test_date_normalizer_runs_before_unit_normalizer(self) -> None:
+        self.assertEqual(
+            normalize_text(
+                "Termin 14.05.2026, Messung 14.05°C.",
+                [],
+                date_normalizer=_date_normalizer(),
+                unit_normalizer=_unit_normalizer(locale="de-DE"),
+            ),
+            (
+                "Termin vierzehnter Mai zweitausendsechsundzwanzig, "
+                "Messung 14.05 Grad."
+            ),
+        )
+
+    def test_provider_control_tags_are_not_unit_normalized(self) -> None:
+        self.assertEqual(
+            normalize_text(
+                "[30°C] Temp 30°C <say-as value=\"30°C\"/>",
+                [],
+                unit_normalizer=_unit_normalizer(locale="de-DE"),
+            ),
+            "[30°C] Temp 30 Grad <say-as value=\"30°C\"/>",
+        )
+
+    def test_parse_unit_normalizer_defaults_locale_from_output_language(self) -> None:
+        normalizer = parse_unit_normalizer(
+            {
+                CONF_OUTPUT_LANGUAGE: "de-DE",
+                CONF_UNIT_NORMALIZER_ENABLED: True,
+            }
+        )
+
+        self.assertTrue(normalizer.enabled)
+        self.assertEqual(normalizer.locale, "de-DE")
+
+    def test_parse_unit_normalizer_rejects_missing_locale_when_enabled(self) -> None:
+        with self.assertRaises(UnitNormalizationError):
+            parse_unit_normalizer({CONF_UNIT_NORMALIZER_ENABLED: True})
+
+    def test_default_unit_locale_normalizes_output_language(self) -> None:
+        self.assertEqual(default_unit_locale("en_us"), "en-US")
+
+    def test_supported_unit_locales_include_output_languages(self) -> None:
+        self.assertIn("sv-SE", supported_unit_locales(("sv-SE",)))
+
+    def test_normalizes_preview_text_from_unsaved_sectioned_unit_config(self) -> None:
+        raw_config = {
+            SECTION_UNITS: {
+                CONF_UNIT_NORMALIZER_ENABLED: True,
+                CONF_UNIT_LOCALE: "de-DE",
+            },
+            SECTION_NUMBERS: {
+                CONF_NUMBER_NORMALIZER_ENABLED: True,
+                CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
+            },
+        }
+
+        with (
+            patch(
+                "custom_components.tts_proxy.normalizer.supported_number_spellout_languages",
+                return_value=("de",),
+            ),
+            patch(
+                "custom_components.tts_proxy.normalizer._spellout_number",
+                side_effect=_fake_german_number,
+            ),
+        ):
+            self.assertEqual(
+                normalize_text_from_raw_config("Temp 30°C.", raw_config),
+                "Temp dreißig Grad.",
+            )
+
+
 class DateNormalizerTests(unittest.TestCase):
     """Date Normalizer behavior."""
 
@@ -1076,7 +1366,8 @@ class DateNormalizerTests(unittest.TestCase):
         text = (
             "Leistung 1942 W, Leistung 1942 Watt, Energie 1942 kWh, "
             "Temperatur 2025 Grad, Anteil 2025 Prozent, Fehlercode 1942, "
-            "PIN 1942, Version v2025.1, Datum 2026-07-25, "
+            "Wind 2025 kmh, Netzwerk 2025 Mbit/s, Speicher 2025 MB, "
+            "Druck 2025 bar, PIN 1942, Version v2025.1, Datum 2026-07-25, "
             "IP 192.168.1.1, sensor_2025."
         )
 
@@ -1344,6 +1635,19 @@ class StreamingNormalizerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual("".join(output), "Super, grinsendes gesicht, feuer")
 
+    async def test_stream_text_cleanup_can_span_chunks(self) -> None:
+        output = await _collect_stream(
+            ["Heute\n", "\tMorgen\r", "\nFertig"],
+            [],
+            text_cleanup_normalizer=_text_cleanup_normalizer(
+                replace_line_breaks=True,
+            ),
+            safety_tail_chars=64,
+            max_buffer_chars=500,
+        )
+
+        self.assertEqual("".join(output), "Heute Morgen Fertig")
+
     async def test_stream_date_normalizer_can_span_chunks(self) -> None:
         output = await _collect_stream(
             ["Termin am 1", "4.0", "5. um 12 Uhr."],
@@ -1374,6 +1678,18 @@ class StreamingNormalizerTests(unittest.IsolatedAsyncioTestCase):
             "".join(output),
             "Seit neunzehnhundertzweiundvierzig aktiv.",
         )
+
+    async def test_stream_unit_normalizer_can_span_chunks(self) -> None:
+        output = await _collect_stream(
+            ["Temp 3", "0", "°", "C."],
+            [],
+            _german_number_normalizer(),
+            unit_normalizer=_unit_normalizer(locale="de-DE"),
+            safety_tail_chars=64,
+            max_buffer_chars=500,
+        )
+
+        self.assertEqual("".join(output), "Temp dreißig Grad.")
 
     async def test_stream_does_not_flush_no_year_date_as_sentence_boundary(self) -> None:
         output = await _collect_stream(
@@ -1459,6 +1775,8 @@ class ConfigTests(unittest.TestCase):
                     CONF_EMOJI_NORMALIZER_ENABLED: True,
                     CONF_EMOJI_HANDLING: EMOJI_HANDLING_SPELLOUT,
                     CONF_EMOJI_LANGUAGE: "de",
+                    CONF_UNIT_NORMALIZER_ENABLED: True,
+                    CONF_UNIT_LOCALE: "de-DE",
                     CONF_NUMBER_NORMALIZER_ENABLED: False,
                     CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
                     CONF_SAFETY_TAIL_CHARS: 64,
@@ -1475,6 +1793,8 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(config.emoji_normalizer.enabled)
         self.assertEqual(config.emoji_normalizer.handling, EMOJI_HANDLING_SPELLOUT)
         self.assertEqual(config.emoji_normalizer.language, "de")
+        self.assertTrue(config.unit_normalizer.enabled)
+        self.assertEqual(config.unit_normalizer.locale, "de-DE")
         self.assertFalse(config.number_normalizer.enabled)
         self.assertEqual(config.number_normalizer.language, "de")
         self.assertEqual(config.safety_tail_chars, 64)
@@ -1529,6 +1849,9 @@ class ConfigTests(unittest.TestCase):
                         CONF_MARKDOWN_STRIP_LINKS: True,
                         CONF_MARKDOWN_STRIP_TABLES: False,
                     },
+                    SECTION_TEXT_CLEANUP: {
+                        CONF_TEXT_CLEANUP_REPLACE_LINE_BREAKS: True,
+                    },
                     SECTION_EMOJI: {
                         CONF_EMOJI_NORMALIZER_ENABLED: True,
                         CONF_EMOJI_HANDLING: EMOJI_HANDLING_REMOVE,
@@ -1543,6 +1866,10 @@ class ConfigTests(unittest.TestCase):
                         CONF_DATE_STANDALONE_YEAR_MIN: 1900,
                         CONF_DATE_STANDALONE_YEAR_MAX: 1999,
                     },
+                    SECTION_UNITS: {
+                        CONF_UNIT_NORMALIZER_ENABLED: True,
+                        CONF_UNIT_LOCALE: "en_us",
+                    },
                     SECTION_NUMBERS: {
                         CONF_NUMBER_NORMALIZER_ENABLED: False,
                         CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
@@ -1555,15 +1882,20 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(config[CONF_MARKDOWN_STRIP_EMPHASIS])
         self.assertTrue(config[CONF_MARKDOWN_STRIP_LINKS])
         self.assertFalse(config[CONF_MARKDOWN_STRIP_TABLES])
+        self.assertTrue(config[CONF_TEXT_CLEANUP_REPLACE_LINE_BREAKS])
         self.assertTrue(config[CONF_EMOJI_NORMALIZER_ENABLED])
         self.assertEqual(config[CONF_EMOJI_HANDLING], EMOJI_HANDLING_REMOVE)
         self.assertTrue(config[CONF_DATE_STANDALONE_YEARS_ENABLED])
         self.assertEqual(config[CONF_DATE_STANDALONE_YEAR_MIN], 1900)
         self.assertEqual(config[CONF_DATE_STANDALONE_YEAR_MAX], 1999)
+        self.assertTrue(config[CONF_UNIT_NORMALIZER_ENABLED])
+        self.assertEqual(config[CONF_UNIT_LOCALE], "en-US")
         self.assertNotIn(SECTION_GENERAL, config)
         self.assertNotIn(SECTION_MARKDOWN, config)
+        self.assertNotIn(SECTION_TEXT_CLEANUP, config)
         self.assertNotIn(SECTION_EMOJI, config)
         self.assertNotIn(SECTION_DATES, config)
+        self.assertNotIn(SECTION_UNITS, config)
         self.assertNotIn(SECTION_NUMBERS, config)
 
     def test_serializable_config_converts_legacy_rule_fields(self) -> None:

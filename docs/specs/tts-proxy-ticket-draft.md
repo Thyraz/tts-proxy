@@ -110,7 +110,7 @@ This breakdown captures the initial implementation plan for TTS Proxy.
 - [ ] User-facing strings explain Target TTS Entity, Output Language, Minimal Lookahead Buffer Length, and Maximal Buffer Limit.
 - [ ] Documentation includes German examples such as `°C -> Grad` and `kWh -> Kilowattstunden`.
 - [ ] Documentation explains that `<...>` and `[...]` spans are preserved and not changed in the MVP.
-- [ ] Documentation explains that templates, Rule Presets, audio preview, built-in unit grammar, and proxy-to-proxy delegation are out of scope for the MVP.
+- [ ] Documentation explains that templates, Rule Presets, audio preview, full unit grammar, and proxy-to-proxy delegation are out of scope for the MVP.
 - [ ] Final verification covers one-shot TTS and streaming TTS through fake or real-compatible test entities.
 
 ## 07 - Add Markdown Cleanup Normalizer
@@ -122,10 +122,11 @@ This breakdown captures the initial implementation plan for TTS Proxy.
 **Acceptance criteria**
 
 - [ ] Markdown Cleanup is a separate optional normalizer and is disabled by default.
-- [ ] Markdown Cleanup runs after Replacement Rules and before Emoji Normalizer, Date Normalizer, and Number Normalizer.
+- [ ] Markdown Cleanup runs after Replacement Rules and before Text Cleanup, Emoji Normalizer, Date Normalizer, Unit Normalizer, and Number Normalizer.
 - [ ] Each cleanup behavior can be enabled independently.
 - [ ] Enabled cleanup can strip emphasis, headings, list markers, table formatting, Markdown links, inline code backticks, blockquote markers, divider lines, strikethrough markers, and image syntax.
 - [ ] Plain URL removal and fenced code block removal are opt-in.
+- [ ] Text Cleanup can replace one or more line breaks with a single space after Markdown Cleanup.
 - [ ] Markdown links keep visible link text and remove the URL target.
 - [ ] Table cleanup removes separator lines and replaces cell separators with punctuation without announcing table semantics.
 - [ ] Isolated square-bracket Provider Control Tags such as `[whispers]` are preserved.
@@ -142,7 +143,7 @@ This breakdown captures the initial implementation plan for TTS Proxy.
 **Acceptance criteria**
 
 - [ ] Emoji Normalizer is a separate optional normalizer and is disabled by default.
-- [ ] Emoji Normalizer runs after Markdown Cleanup and before Date Normalizer and Number Normalizer.
+- [ ] Emoji Normalizer runs after Markdown Cleanup and Text Cleanup and before Date Normalizer, Unit Normalizer, and Number Normalizer.
 - [ ] Emoji Handling is a dropdown with Spell out emoji and Remove emoji.
 - [ ] Spell out emoji is the default handling when the normalizer is enabled.
 - [ ] Emoji Language is selected from the languages supported by the emoji package.
@@ -152,3 +153,23 @@ This breakdown captures the initial implementation plan for TTS Proxy.
 - [ ] Remove mode deletes emoji without adding punctuation.
 - [ ] Provider Control Tags are preserved.
 - [ ] Tests cover remove mode, spellout mode, fallback language behavior, Provider Control Tags, pipeline order, streaming, config parsing, and sectioned config flattening.
+
+## 09 - Add Unit Normalizer
+
+**Blocked by:** 08 - Add Emoji Normalizer.
+
+**What it delivers:** A user can optionally normalize common smart-home unit symbols before number spellout without writing many similar regex Replacement Rules.
+
+**Acceptance criteria**
+
+- [ ] Unit Normalizer is a separate optional normalizer and is disabled by default.
+- [ ] Unit Normalizer runs after Date Normalizer and before Number Normalizer.
+- [ ] Unit Locale defaults from Output Language and remains separately configurable.
+- [ ] German and English output use curated unit wording with limited singular/plural handling.
+- [ ] Other Unit Locales use a conservative fallback.
+- [ ] Temperature wording follows Unit Locale defaults: German treats Celsius as everyday, `en-US` treats Fahrenheit as everyday, and other English locales treat Celsius as everyday.
+- [ ] Unit Normalizer handles common symbols for temperature, percent, power, energy, voltage, current, distance, speed, pressure, light, and data units.
+- [ ] `kmh` is accepted as an alias for `km/h`.
+- [ ] Bare `m` is not treated as meters.
+- [ ] Provider Control Tags are preserved.
+- [ ] Tests cover catalog output, boundaries, pipeline order, streaming, config parsing, and sectioned preview config.

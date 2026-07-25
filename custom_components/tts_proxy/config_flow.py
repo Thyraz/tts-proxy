@@ -48,6 +48,9 @@ from .const import (
     CONF_PREVIEW_TEXT,
     CONF_REPLACEMENT_RULES,
     CONF_SAFETY_TAIL_CHARS,
+    CONF_TEXT_CLEANUP_REPLACE_LINE_BREAKS,
+    CONF_UNIT_LOCALE,
+    CONF_UNIT_NORMALIZER_ENABLED,
     DEFAULT_DATE_STANDALONE_YEAR_MAX,
     DEFAULT_DATE_STANDALONE_YEAR_MIN,
     DEFAULT_MAX_BUFFER_CHARS,
@@ -73,6 +76,8 @@ from .const import (
     SECTION_NUMBERS,
     SECTION_REPLACEMENTS,
     SECTION_STREAMING,
+    SECTION_TEXT_CLEANUP,
+    SECTION_UNITS,
 )
 from .date_normalizer import (
     DateNormalizationError,
@@ -96,6 +101,11 @@ from .normalizer import (
     supported_number_spellout_languages,
 )
 from .preview import preview_event_payload
+from .unit_normalizer import (
+    UnitNormalizationError,
+    default_unit_locale,
+    supported_unit_locales,
+)
 
 
 class TtsProxyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -284,6 +294,12 @@ def _details_schema(
         language_default,
         emoji_languages,
     )
+    unit_locales = list(supported_unit_locales(tuple(languages)))
+    unit_locale_default = _default_unit_locale(
+        defaults,
+        language_default,
+        unit_locales,
+    )
 
     return vol.Schema(
         {
@@ -296,6 +312,9 @@ def _details_schema(
                 defaults
             ),
             vol.Required(SECTION_MARKDOWN): _markdown_section_schema(defaults),
+            vol.Required(SECTION_TEXT_CLEANUP): _text_cleanup_section_schema(
+                defaults
+            ),
             vol.Required(SECTION_EMOJI): _emoji_section_schema(
                 emoji_languages,
                 emoji_language_default,
@@ -306,6 +325,11 @@ def _details_schema(
                 date_locale_default,
                 date_renderer_default,
                 date_input_formats_default,
+                defaults,
+            ),
+            vol.Required(SECTION_UNITS): _unit_section_schema(
+                unit_locales,
+                unit_locale_default,
                 defaults,
             ),
             vol.Required(SECTION_NUMBERS): _number_section_schema(
@@ -479,6 +503,24 @@ def _markdown_section_schema(defaults: dict[str, Any]) -> Any:
     )
 
 
+def _text_cleanup_section_schema(defaults: dict[str, Any]) -> Any:
+    """Return the Text Cleanup section schema."""
+    return form_section(
+        vol.Schema(
+            {
+                vol.Optional(
+                    CONF_TEXT_CLEANUP_REPLACE_LINE_BREAKS,
+                    default=defaults.get(
+                        CONF_TEXT_CLEANUP_REPLACE_LINE_BREAKS,
+                        False,
+                    ),
+                ): selector.BooleanSelector(),
+            }
+        ),
+        {"collapsed": True},
+    )
+
+
 def _emoji_section_schema(
     emoji_languages: list[str],
     emoji_language_default: str,
@@ -618,6 +660,35 @@ def _number_section_schema(
     )
 
 
+def _unit_section_schema(
+    unit_locales: list[str],
+    unit_locale_default: str,
+    defaults: dict[str, Any],
+) -> Any:
+    """Return the Unit Normalizer section schema."""
+    return form_section(
+        vol.Schema(
+            {
+                vol.Optional(
+                    CONF_UNIT_NORMALIZER_ENABLED,
+                    default=defaults.get(CONF_UNIT_NORMALIZER_ENABLED, False),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_UNIT_LOCALE,
+                    default=unit_locale_default,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=unit_locales,
+                        mode="dropdown",
+                        sort=True,
+                    )
+                ),
+            }
+        ),
+        {"collapsed": True},
+    )
+
+
 def _streaming_section_schema(defaults: dict[str, Any]) -> Any:
     """Return the Streaming section schema."""
     return form_section(
@@ -704,6 +775,9 @@ def _validate_details(
     except EmojiNormalizationError:
         errors[CONF_EMOJI_LANGUAGE] = "invalid_emoji_normalizer"
         return errors
+    except UnitNormalizationError:
+        errors[CONF_UNIT_LOCALE] = "invalid_unit_normalizer"
+        return errors
     except NumberNormalizationError:
         errors[CONF_NUMBER_SPELLOUT_LANGUAGE] = "invalid_number_normalizer"
         return errors
@@ -778,6 +852,23 @@ def _default_date_locale(
     return date_locales[0] if date_locales else ""
 
 
+def _default_unit_locale(
+    defaults: dict[str, Any],
+    output_language: str,
+    unit_locales: list[str],
+) -> str:
+    """Return a Unit Locale default present in selector options."""
+    configured = default_unit_locale(str(defaults.get(CONF_UNIT_LOCALE, "") or ""))
+    candidates = (
+        configured,
+        default_unit_locale(output_language),
+    )
+    for candidate in candidates:
+        if candidate in unit_locales:
+            return candidate
+    return unit_locales[0] if unit_locales else ""
+
+
 def _get_target_tts_entity(
     hass: HomeAssistant,
     entity_id: str,
@@ -830,6 +921,7 @@ def ws_start_preview(
         EmojiNormalizationError,
         NumberNormalizationError,
         RuleValidationError,
+        UnitNormalizationError,
         ValueError,
     ) as err:
         _send_preview_input_error(connection, msg, {"base": str(err)})
