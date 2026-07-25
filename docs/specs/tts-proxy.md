@@ -8,7 +8,7 @@ Users need a caller-agnostic Home Assistant TTS entity that can be selected anyw
 
 ## Solution
 
-Build a custom Home Assistant integration that exposes one Proxy TTS Entity per config entry. The Proxy TTS Entity is selected like any other TTS entity. It receives text, applies configured Replacement Rules, optional Markdown Cleanup, optional Text Cleanup, optional Emoji Normalizer processing, optional Date Normalizer processing, optional Unit Normalizer processing, and optional Number Normalizer processing, then delegates directly to its configured Target TTS Entity.
+Build a custom Home Assistant integration that exposes one Proxy TTS Entity per config entry. The Proxy TTS Entity is selected like any other TTS entity. It receives text, applies configured Replacement Rules, optional Markdown Cleanup, optional Text Cleanup, optional Emoji Normalizer processing, optional Date Normalizer processing, optional Time Normalizer processing, optional Unit Normalizer processing, and optional Number Normalizer processing, then delegates directly to its configured Target TTS Entity.
 
 The Proxy Configuration requires:
 
@@ -20,6 +20,7 @@ The Proxy Configuration requires:
 - Text Cleanup settings
 - Emoji Normalizer settings
 - Date Normalizer settings
+- Time Normalizer settings
 - Unit Normalizer settings
 - Number Normalizer settings
 - Minimal Lookahead Buffer Length
@@ -78,8 +79,11 @@ For one-shot TTS, the proxy processes the full message and calls the Target TTS 
 45. As a Home Assistant user, I want Emoji Language configured separately, so that emoji name support can follow the emoji package's language coverage.
 46. As a Home Assistant user, I want optional Unit Normalizer processing, so that common smart-home unit symbols are spoken naturally without writing many similar regex rules.
 47. As a Home Assistant user, I want Unit Locale configured separately, so that unit wording and everyday temperature scale can be tuned independently from Target TTS Entity capabilities.
-48. As a future user, I want rule presets to be possible later, so that common language/use-case replacements can be added without changing the MVP model.
-49. As a future user, I want template replacement mode to be possible later, so that advanced dynamic normalization can be explored after streaming and caching semantics are designed.
+48. As a Home Assistant user, I want optional Time Normalizer processing, so that common clock times and time ranges are spoken naturally.
+49. As a Home Assistant user, I want Time Locale configured separately, so that time wording can be curated independently from Target TTS Entity capabilities.
+50. As a Home Assistant user, I want duration detection to be optional, so that ambiguous two-part colon text is not treated as elapsed time unless I choose that behavior.
+51. As a future user, I want rule presets to be possible later, so that common language/use-case replacements can be added without changing the MVP model.
+52. As a future user, I want template replacement mode to be possible later, so that advanced dynamic normalization can be explored after streaming and caching semantics are designed.
 
 ## Implementation Decisions
 
@@ -112,8 +116,8 @@ For one-shot TTS, the proxy processes the full message and calls the Target TTS 
 - Each Replacement Rule may have an optional display-only name.
 - The options flow displays Replacement Rule rows with Name as the primary row text and Find as the secondary row text, following Home Assistant ObjectSelector constraints.
 - Regex rules must compile successfully before Proxy Configuration or Proxy Reconfiguration is saved.
-- Markdown Cleanup, Text Cleanup, emoji detection, date detection, unit detection, and number detection are separate optional normalizers that run after user-defined Replacement Rules.
-- The normalization pipeline is Replacement Rules, then Markdown Cleanup, then Text Cleanup, then Emoji Normalizer, then Date Normalizer, then Unit Normalizer, then Number Normalizer.
+- Markdown Cleanup, Text Cleanup, emoji detection, date detection, time detection, unit detection, and number detection are separate optional normalizers that run after user-defined Replacement Rules.
+- The normalization pipeline is Replacement Rules, then Markdown Cleanup, then Text Cleanup, then Emoji Normalizer, then Date Normalizer, then Time Normalizer, then Unit Normalizer, then Number Normalizer.
 - Markdown Cleanup is disabled by default. When enabled, emphasis, headings, list markers, table formatting, Markdown links, inline code backticks, blockquote markers, divider lines, strikethrough markers, and image syntax cleanup are enabled by default; plain URL removal and fenced code block removal are opt-in.
 - Text Cleanup can replace one or more line breaks with a single space after Markdown Cleanup.
 - Markdown Cleanup is a conservative cleanup normalizer, not a semantic Markdown-to-speech renderer. It does not announce table structure, infer column meaning, parse HTML tags, or process reference-style links.
@@ -123,14 +127,18 @@ For one-shot TTS, the proxy processes the full message and calls the Target TTS 
 - Unit Normalizer is disabled by default. When enabled, it uses a configured Unit Locale, defaults that locale from Output Language, and replaces only supported unit symbols or technical abbreviations after eligible numbers.
 - German and English Unit Normalizer output is curated. Other Unit Locales use a conservative fallback.
 - Unit Normalizer supports common smart-home units for temperature, percent, power, energy, voltage, current, distance, speed, pressure, light, and data. It includes `kmh` as an alias for `km/h` and intentionally excludes bare `m`.
+- Time Normalizer is disabled by default. When enabled, it uses a configured Time Locale and supports curated German and English clock-time rendering.
+- Time Range Detection and Clock Time Detection are enabled by default inside the Time Normalizer. Duration Detection is opt-in because two-part colon text is ambiguous without an `h` marker.
+- Time Normalizer detects `H:MM` and `HH:MM` clock times, locale-specific markers such as `Uhr` or `am`/`pm`, clock-time ranges, and opt-in durations such as `1:30h` or `01:30:00`.
+- The Time Normalizer deliberately skips structured tokens such as IPs, identifiers, ratios, clock times with seconds, and invalid clock values.
 - The Number Normalizer spells simple leading-zero integers digit by digit, while one-separator decimals are normalized by removing leading integer zeroes and trailing fractional zeroes before spellout.
 - The German Date Renderer uses deterministic immediate left-context rules for clear article and preposition patterns, but does not use a general NLP parser.
 - Standalone Year Detection is an explicit Date Normalizer option with a configurable minimum and maximum year.
 - Sloppy spaced numeric date formats such as `DD. MM. YYYY` are separate Date Input Formats. The German default enables the full-year spaced form, but not the no-year spaced form.
 - Numeric No-Year Date candidates separated only by whitespace are left unchanged; a visible separator or word between candidates allows normalization.
-- The options flow groups settings into General, Replacement Rules, Markdown Cleanup, Text Cleanup, Emoji Normalizer, Date Normalizer, Unit Normalizer, Number Normalizer, and Settings for TTS Streaming sections, then places Preview Input as the final top-level field directly before the Home Assistant preview output.
+- The options flow groups settings into General, Replacement Rules, Markdown Cleanup, Text Cleanup, Emoji Normalizer, Date Normalizer, Time Normalizer, Unit Normalizer, Number Normalizer, and Settings for TTS Streaming sections, then places Preview Input as the final top-level field directly before the Home Assistant preview output.
 - The options flow includes a preview area that uses current unsaved settings and does not generate audio.
-- Preserve Provider Control Tags as opaque segments for Replacement Rules, Text Cleanup, Emoji Normalizer, Date Normalizer, Unit Normalizer, and Number Normalizer. Markdown Cleanup may rewrite explicit Markdown constructs such as `[label](url)`, `![alt](url)`, and task-list markers, but isolated square-bracket spans and XML-like `<...>` spans remain protected.
+- Preserve Provider Control Tags as opaque segments for Replacement Rules, Text Cleanup, Emoji Normalizer, Date Normalizer, Time Normalizer, Unit Normalizer, and Number Normalizer. Markdown Cleanup may rewrite explicit Markdown constructs such as `[label](url)`, `![alt](url)`, and task-list markers, but isolated square-bracket spans and XML-like `<...>` spans remain protected.
 - The streaming normalizer keeps a configurable Minimal Lookahead Buffer Length, defaulting to 64 characters.
 - The streaming normalizer keeps a configurable Maximal Buffer Limit, defaulting to 500 characters.
 - The streaming normalizer flushes preferentially at sentence-like punctuation boundaries before the Minimal Lookahead Buffer Length.
@@ -156,6 +164,7 @@ Good tests should verify externally visible behavior:
 - preview shows the processed text for current unsaved options
 - Markdown Cleanup preserves Provider Control Tags while simplifying configured Markdown syntax
 - Emoji Normalizer can remove emoji or spell them out with comma separators
+- Time Normalizer handles clock times, time ranges, durations, and structured-token skips
 - Unit Normalizer replaces supported units while leaving numbers for Number Normalizer
 - Provider Control Tags are preserved and not modified by Replacement Rules
 - Passthrough TTS Options are accepted only when valid for the Target TTS Entity or HA preferred audio output
@@ -170,6 +179,7 @@ Tests should stay focused on the Home Assistant-facing TTS entity behavior and t
 - Dynamic routing by language, voice, caller, media player, or Assist pipeline.
 - Proxy-to-proxy delegation in the MVP.
 - Full locale-specific unit grammar beyond curated German and English output plus conservative fallback.
+- Full locale-specific time grammar beyond curated German and English output.
 - Full semantic Markdown-to-speech rendering.
 - HTML cleanup or structured XML parsing beyond preserving `<...>` spans as opaque text.
 - Rule Presets.

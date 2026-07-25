@@ -49,6 +49,11 @@ from .const import (
     CONF_REPLACEMENT_RULES,
     CONF_SAFETY_TAIL_CHARS,
     CONF_TEXT_CLEANUP_REPLACE_LINE_BREAKS,
+    CONF_TIME_CLOCK_TIMES_ENABLED,
+    CONF_TIME_DURATIONS_ENABLED,
+    CONF_TIME_LOCALE,
+    CONF_TIME_NORMALIZER_ENABLED,
+    CONF_TIME_RANGES_ENABLED,
     CONF_UNIT_LOCALE,
     CONF_UNIT_NORMALIZER_ENABLED,
     DEFAULT_DATE_STANDALONE_YEAR_MAX,
@@ -77,6 +82,7 @@ from .const import (
     SECTION_REPLACEMENTS,
     SECTION_STREAMING,
     SECTION_TEXT_CLEANUP,
+    SECTION_TIME,
     SECTION_UNITS,
 )
 from .date_normalizer import (
@@ -101,6 +107,11 @@ from .normalizer import (
     supported_number_spellout_languages,
 )
 from .preview import preview_event_payload
+from .time_normalizer import (
+    TimeNormalizationError,
+    default_time_locale,
+    supported_time_locales,
+)
 from .unit_normalizer import (
     UnitNormalizationError,
     default_unit_locale,
@@ -300,6 +311,12 @@ def _details_schema(
         language_default,
         unit_locales,
     )
+    time_locales = list(supported_time_locales())
+    time_locale_default = _default_time_locale(
+        defaults,
+        language_default,
+        time_locales,
+    )
 
     return vol.Schema(
         {
@@ -325,6 +342,11 @@ def _details_schema(
                 date_locale_default,
                 date_renderer_default,
                 date_input_formats_default,
+                defaults,
+            ),
+            vol.Required(SECTION_TIME): _time_section_schema(
+                time_locales,
+                time_locale_default,
                 defaults,
             ),
             vol.Required(SECTION_UNITS): _unit_section_schema(
@@ -689,6 +711,47 @@ def _unit_section_schema(
     )
 
 
+def _time_section_schema(
+    time_locales: list[str],
+    time_locale_default: str,
+    defaults: dict[str, Any],
+) -> Any:
+    """Return the Time Normalizer section schema."""
+    return form_section(
+        vol.Schema(
+            {
+                vol.Optional(
+                    CONF_TIME_NORMALIZER_ENABLED,
+                    default=defaults.get(CONF_TIME_NORMALIZER_ENABLED, False),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_TIME_LOCALE,
+                    default=time_locale_default,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=time_locales,
+                        mode="dropdown",
+                        sort=True,
+                    )
+                ),
+                vol.Optional(
+                    CONF_TIME_RANGES_ENABLED,
+                    default=defaults.get(CONF_TIME_RANGES_ENABLED, True),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_TIME_CLOCK_TIMES_ENABLED,
+                    default=defaults.get(CONF_TIME_CLOCK_TIMES_ENABLED, True),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_TIME_DURATIONS_ENABLED,
+                    default=defaults.get(CONF_TIME_DURATIONS_ENABLED, False),
+                ): selector.BooleanSelector(),
+            }
+        ),
+        {"collapsed": True},
+    )
+
+
 def _streaming_section_schema(defaults: dict[str, Any]) -> Any:
     """Return the Streaming section schema."""
     return form_section(
@@ -777,6 +840,9 @@ def _validate_details(
         return errors
     except UnitNormalizationError:
         errors[CONF_UNIT_LOCALE] = "invalid_unit_normalizer"
+        return errors
+    except TimeNormalizationError:
+        errors[CONF_TIME_LOCALE] = "invalid_time_normalizer"
         return errors
     except NumberNormalizationError:
         errors[CONF_NUMBER_SPELLOUT_LANGUAGE] = "invalid_number_normalizer"
@@ -869,6 +935,24 @@ def _default_unit_locale(
     return unit_locales[0] if unit_locales else ""
 
 
+def _default_time_locale(
+    defaults: dict[str, Any],
+    output_language: str,
+    time_locales: list[str],
+) -> str:
+    """Return a Time Locale default present in selector options."""
+    configured = default_time_locale(str(defaults.get(CONF_TIME_LOCALE, "") or ""))
+    candidates = (
+        configured,
+        default_time_locale(output_language),
+        "en",
+    )
+    for candidate in candidates:
+        if candidate in time_locales:
+            return candidate
+    return time_locales[0] if time_locales else ""
+
+
 def _get_target_tts_entity(
     hass: HomeAssistant,
     entity_id: str,
@@ -921,6 +1005,7 @@ def ws_start_preview(
         EmojiNormalizationError,
         NumberNormalizationError,
         RuleValidationError,
+        TimeNormalizationError,
         UnitNormalizationError,
         ValueError,
     ) as err:

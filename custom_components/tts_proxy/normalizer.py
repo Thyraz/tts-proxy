@@ -40,6 +40,7 @@ from .text_cleanup_normalizer import (
     TextCleanupNormalizer,
     parse_text_cleanup_normalizer,
 )
+from .time_normalizer import TimeNormalizer, parse_time_normalizer
 from .unit_normalizer import UnitNormalizer, parse_unit_normalizer
 
 _CONTROL_TAG_RE = re.compile(r"(<[^>]*>|\[[^\]]*\])")
@@ -250,9 +251,10 @@ def normalize_text_from_raw_config(text: str, raw_config: Mapping[str, Any]) -> 
         markdown_normalizer=parse_markdown_cleanup_normalizer(raw_config),
         text_cleanup_normalizer=parse_text_cleanup_normalizer(raw_config),
         emoji_normalizer=parse_emoji_normalizer(raw_config),
+        date_normalizer=parse_date_normalizer(raw_config),
+        time_normalizer=parse_time_normalizer(raw_config),
         unit_normalizer=parse_unit_normalizer(raw_config),
         number_normalizer=parse_number_normalizer(raw_config),
-        date_normalizer=parse_date_normalizer(raw_config),
     )
 
 
@@ -285,6 +287,7 @@ def normalize_text(
     emoji_normalizer: EmojiNormalizer | None = None,
     text_cleanup_normalizer: TextCleanupNormalizer | None = None,
     unit_normalizer: UnitNormalizer | None = None,
+    time_normalizer: TimeNormalizer | None = None,
 ) -> str:
     """Normalize text while preserving Provider Control Tags."""
     if not text:
@@ -308,6 +311,7 @@ def normalize_text(
             number_normalizer,
             date_normalizer,
             emoji_normalizer,
+            time_normalizer,
             unit_normalizer,
         ),
     )
@@ -341,6 +345,7 @@ async def normalize_stream(
     emoji_normalizer: EmojiNormalizer | None = None,
     text_cleanup_normalizer: TextCleanupNormalizer | None = None,
     unit_normalizer: UnitNormalizer | None = None,
+    time_normalizer: TimeNormalizer | None = None,
     *,
     safety_tail_chars: int = DEFAULT_SAFETY_TAIL_CHARS,
     max_buffer_chars: int = DEFAULT_MAX_BUFFER_CHARS,
@@ -373,6 +378,7 @@ async def normalize_stream(
                     emoji_normalizer=emoji_normalizer,
                     text_cleanup_normalizer=text_cleanup_normalizer,
                     unit_normalizer=unit_normalizer,
+                    time_normalizer=time_normalizer,
                 )
 
     if pending:
@@ -385,6 +391,7 @@ async def normalize_stream(
             emoji_normalizer=emoji_normalizer,
             text_cleanup_normalizer=text_cleanup_normalizer,
             unit_normalizer=unit_normalizer,
+            time_normalizer=time_normalizer,
         )
 
 
@@ -416,14 +423,17 @@ def _apply_builtin_normalizers(
     number_normalizer: NumberNormalizer | None,
     date_normalizer: DateNormalizer | None,
     emoji_normalizer: EmojiNormalizer | None,
+    time_normalizer: TimeNormalizer | None,
     unit_normalizer: UnitNormalizer | None,
 ) -> str:
-    """Apply Emoji, Date, Unit, then Number Normalizers."""
+    """Apply Emoji, Date, Time, Unit, then Number Normalizers."""
     normalized = text
     if emoji_normalizer is not None:
         normalized = emoji_normalizer.normalize(normalized)
     if date_normalizer is not None:
         normalized = date_normalizer.normalize(normalized)
+    if time_normalizer is not None:
+        normalized = time_normalizer.normalize(normalized)
     if unit_normalizer is not None:
         normalized = unit_normalizer.normalize(normalized)
     if number_normalizer is not None:

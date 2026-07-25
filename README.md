@@ -11,6 +11,7 @@ It can apply replacements based on:
 - text cleanup
 - emoji detection
 - date detection
+- time detection
 - unit detection
 - number detection
 
@@ -20,6 +21,8 @@ Date detection can also spell standalone years within a configured range.
 Some sanity checks are done, to identify numbers that are clearly no years (like 1920 Watts).
 
 German date output also uses a few simple context rules for endings like `dreizehnte` vs `dreizehnter`.
+
+Time detection can spell German and English clock times, time ranges, and optional durations such as `13:40 Uhr`, `2:30pm-3:30pm`, or `01:30:00`.
 
 Unit detection covers common smart-home symbols like `°C`, `%`, `W`, `kWh`, `km/h`, `kmh`, `hPa`, and `Mbit/s`. German and English have curated wording; other locales use a conservative fallback.
 
@@ -50,7 +53,7 @@ Then restart Home Assistant.
 2. Add the **TTS Proxy** integration.
 3. Choose the target TTS entity that should receive the processed text.
 4. Select the output language.
-5. Add replacement rules, optionally name them, and enable Markdown cleanup, text cleanup, emoji handling, date detection, unit detection, or number detection if needed.
+5. Add replacement rules, optionally name them, and enable Markdown cleanup, text cleanup, emoji handling, date detection, time detection, unit detection, or number detection if needed.
 
 Use the preview area in the options dialog to test the processed text before saving.
 

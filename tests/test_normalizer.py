@@ -37,6 +37,11 @@ from custom_components.tts_proxy.const import (
     CONF_REPLACEMENT_RULES,
     CONF_SAFETY_TAIL_CHARS,
     CONF_TEXT_CLEANUP_REPLACE_LINE_BREAKS,
+    CONF_TIME_CLOCK_TIMES_ENABLED,
+    CONF_TIME_DURATIONS_ENABLED,
+    CONF_TIME_LOCALE,
+    CONF_TIME_NORMALIZER_ENABLED,
+    CONF_TIME_RANGES_ENABLED,
     CONF_UNIT_LOCALE,
     CONF_UNIT_NORMALIZER_ENABLED,
     DATE_INPUT_FORMAT_DMY_DOT,
@@ -68,6 +73,7 @@ from custom_components.tts_proxy.const import (
     SECTION_MARKDOWN,
     SECTION_NUMBERS,
     SECTION_TEXT_CLEANUP,
+    SECTION_TIME,
     SECTION_UNITS,
 )
 from custom_components.tts_proxy.date_normalizer import (
@@ -85,6 +91,13 @@ from custom_components.tts_proxy.emoji_normalizer import (
 )
 from custom_components.tts_proxy.markdown_normalizer import MarkdownCleanupNormalizer
 from custom_components.tts_proxy.text_cleanup_normalizer import TextCleanupNormalizer
+from custom_components.tts_proxy.time_normalizer import (
+    TimeNormalizationError,
+    TimeNormalizer,
+    default_time_locale,
+    parse_time_normalizer,
+    supported_time_locales,
+)
 from custom_components.tts_proxy.unit_normalizer import (
     UnitNormalizationError,
     UnitNormalizer,
@@ -170,6 +183,38 @@ def _fake_date_number(value: int, language: str, purpose: str) -> str:
         ("fr", "cardinal", 14): "quatorze",
         ("fr", "cardinal", 5): "cinq",
         ("fr", "year", 2026): "deux mille vingt-six",
+    }
+    return values[(language, purpose, value)]
+
+
+def _fake_time_number(value: int, language: str, purpose: str) -> str:
+    """Return spellout values used by Time Normalizer tests."""
+    values = {
+        ("de", "cardinal", 0): "null",
+        ("de", "cardinal", 1): "eins",
+        ("de", "cardinal", 2): "zwei",
+        ("de", "cardinal", 5): "fünf",
+        ("de", "cardinal", 8): "acht",
+        ("de", "cardinal", 12): "zwölf",
+        ("de", "cardinal", 13): "dreizehn",
+        ("de", "cardinal", 14): "vierzehn",
+        ("de", "cardinal", 15): "fünfzehn",
+        ("de", "cardinal", 24): "vierundzwanzig",
+        ("de", "cardinal", 30): "dreißig",
+        ("de", "cardinal", 40): "vierzig",
+        ("de", "cardinal", 59): "neunundfünfzig",
+        ("en", "cardinal", 0): "zero",
+        ("en", "cardinal", 1): "one",
+        ("en", "cardinal", 2): "two",
+        ("en", "cardinal", 3): "three",
+        ("en", "cardinal", 5): "five",
+        ("en", "cardinal", 8): "eight",
+        ("en", "cardinal", 12): "twelve",
+        ("en", "cardinal", 13): "thirteen",
+        ("en", "cardinal", 14): "fourteen",
+        ("en", "cardinal", 15): "fifteen",
+        ("en", "cardinal", 30): "thirty",
+        ("en", "cardinal", 40): "forty",
     }
     return values[(language, purpose, value)]
 
@@ -270,6 +315,24 @@ def _unit_normalizer(*, locale: str = "de-DE") -> UnitNormalizer:
     return UnitNormalizer(enabled=True, locale=locale)
 
 
+def _time_normalizer(
+    *,
+    locale: str = "de-DE",
+    clock_times_enabled: bool = True,
+    time_ranges_enabled: bool = True,
+    durations_enabled: bool = False,
+) -> TimeNormalizer:
+    """Return an enabled fake Time Normalizer."""
+    return TimeNormalizer(
+        enabled=True,
+        locale=locale,
+        clock_times_enabled=clock_times_enabled,
+        time_ranges_enabled=time_ranges_enabled,
+        durations_enabled=durations_enabled,
+        converter=_fake_time_number,
+    )
+
+
 async def _collect_stream(
     values: list[str],
     rules: list[ReplacementRule],
@@ -277,6 +340,7 @@ async def _collect_stream(
     date_normalizer: DateNormalizer | None = None,
     markdown_normalizer: MarkdownCleanupNormalizer | None = None,
     text_cleanup_normalizer: TextCleanupNormalizer | None = None,
+    time_normalizer: TimeNormalizer | None = None,
     unit_normalizer: UnitNormalizer | None = None,
     **kwargs,
 ) -> list[str]:
@@ -290,6 +354,7 @@ async def _collect_stream(
             date_normalizer,
             markdown_normalizer,
             text_cleanup_normalizer=text_cleanup_normalizer,
+            time_normalizer=time_normalizer,
             unit_normalizer=unit_normalizer,
             **kwargs,
         )
@@ -1205,6 +1270,197 @@ class UnitNormalizerTests(unittest.TestCase):
             )
 
 
+class TimeNormalizerTests(unittest.TestCase):
+    """Time Normalizer behavior."""
+
+    def test_disabled_normalizer_leaves_times_unchanged(self) -> None:
+        normalizer = TimeNormalizer(enabled=False, locale="de-DE")
+
+        self.assertEqual(
+            normalizer.normalize("Termin 13:40 Uhr."),
+            "Termin 13:40 Uhr.",
+        )
+
+    def test_german_clock_times_render_with_uhr(self) -> None:
+        normalizer = _time_normalizer(locale="de-DE")
+
+        self.assertEqual(
+            normalizer.normalize("Termine 13:40, 13:40 Uhr, 13:40Uhr."),
+            "Termine dreizehn Uhr vierzig, dreizehn Uhr vierzig, dreizehn Uhr vierzig.",
+        )
+        self.assertEqual(
+            normalizer.normalize("Start 08:05, Ende 12:00, Wecker 1:05 Uhr."),
+            "Start acht Uhr fünf, Ende zwölf Uhr, Wecker ein Uhr fünf.",
+        )
+
+    def test_duration_detection_is_disabled_by_default(self) -> None:
+        normalizer = _time_normalizer(locale="de-DE")
+
+        self.assertEqual(
+            normalizer.normalize("Dauer 1:30h und 01:30:00."),
+            "Dauer 1:30h und 01:30:00.",
+        )
+
+    def test_english_clock_times_render_with_optional_ampm(self) -> None:
+        normalizer = _time_normalizer(locale="en-US")
+
+        self.assertEqual(
+            normalizer.normalize("Times 13:40, 08:05, 12:00."),
+            "Times thirteen forty, eight oh five, twelve.",
+        )
+        self.assertEqual(
+            normalizer.normalize("Times 01:40pm, 1:05 a.m., 12:00 PM."),
+            "Times one forty PM, one oh five AM, twelve PM.",
+        )
+
+    def test_german_durations_render_components(self) -> None:
+        normalizer = _time_normalizer(locale="de-DE", durations_enabled=True)
+
+        self.assertEqual(
+            normalizer.normalize("Dauer 01:30:00, 00:05:00 und 00:00:30."),
+            "Dauer eine Stunde dreißig Minuten, fünf Minuten und dreißig Sekunden.",
+        )
+        self.assertEqual(
+            normalizer.normalize("Dauer 02:01:05, 24:00h und 01:00h."),
+            (
+                "Dauer zwei Stunden eine Minute fünf Sekunden, "
+                "vierundzwanzig Stunden und eine Stunde."
+            ),
+        )
+
+    def test_english_durations_render_components(self) -> None:
+        normalizer = _time_normalizer(locale="en-GB", durations_enabled=True)
+
+        self.assertEqual(
+            normalizer.normalize("Duration 1:30h and 02:01:05."),
+            "Duration one hour thirty minutes and two hours one minute five seconds.",
+        )
+
+    def test_time_ranges_render_between_clock_times(self) -> None:
+        german = _time_normalizer(locale="de-DE")
+        english = _time_normalizer(locale="en-US")
+
+        self.assertEqual(
+            german.normalize("Termin 14:30-15:30, 14:30 - 15:30 Uhr."),
+            (
+                "Termin vierzehn Uhr dreißig bis fünfzehn Uhr dreißig, "
+                "vierzehn Uhr dreißig bis fünfzehn Uhr dreißig."
+            ),
+        )
+        self.assertEqual(
+            english.normalize("Times 2:30-3:30pm, 2:30pm-3:30pm."),
+            "Times two thirty to three thirty PM, two thirty PM to three thirty PM.",
+        )
+
+    def test_range_detection_can_be_disabled_independently(self) -> None:
+        normalizer = _time_normalizer(locale="de-DE", time_ranges_enabled=False)
+
+        self.assertEqual(
+            normalizer.normalize("Termin 14:30-15:30."),
+            "Termin vierzehn Uhr dreißig-fünfzehn Uhr dreißig.",
+        )
+
+    def test_duration_and_clock_detection_use_strict_boundaries(self) -> None:
+        def fail_on_call(value: int, language: str, purpose: str) -> str:
+            raise AssertionError(f"Unexpected conversion: {value} {language} {purpose}")
+
+        normalizer = TimeNormalizer(
+            enabled=True,
+            locale="de-DE",
+            durations_enabled=True,
+            converter=fail_on_call,
+        )
+        text = (
+            "Ungültig 24:00 Uhr, 13:40:05 Uhr, 16:9, sensor_13:40, "
+            "ID13:40, 01:30:00 Uhr, 192.168.1.1:8123."
+        )
+
+        self.assertEqual(normalizer.normalize(text), text)
+
+    def test_time_normalizer_runs_after_date_and_before_unit_and_number(self) -> None:
+        self.assertEqual(
+            normalize_text(
+                "Termin 14.05.2026 um 13:40 Uhr mit 30W.",
+                [],
+                _german_number_normalizer(),
+                _date_normalizer(),
+                time_normalizer=_time_normalizer(locale="de-DE"),
+                unit_normalizer=_unit_normalizer(locale="de-DE"),
+            ),
+            (
+                "Termin vierzehnter Mai zweitausendsechsundzwanzig "
+                "um dreizehn Uhr vierzig mit dreißig Watt."
+            ),
+        )
+
+    def test_provider_control_tags_are_not_time_normalized(self) -> None:
+        self.assertEqual(
+            normalize_text(
+                "[13:40] Start 13:40 <break time=\"13:40\"/>",
+                [],
+                time_normalizer=_time_normalizer(locale="de-DE"),
+            ),
+            "[13:40] Start dreizehn Uhr vierzig <break time=\"13:40\"/>",
+        )
+
+    def test_parse_time_normalizer_defaults_locale_from_output_language(self) -> None:
+        normalizer = parse_time_normalizer(
+            {
+                CONF_OUTPUT_LANGUAGE: "en_us",
+                CONF_TIME_NORMALIZER_ENABLED: True,
+            }
+        )
+
+        self.assertTrue(normalizer.enabled)
+        self.assertEqual(normalizer.locale, "en-US")
+
+    def test_parse_time_normalizer_rejects_unknown_locale_when_enabled(self) -> None:
+        with self.assertRaises(TimeNormalizationError):
+            parse_time_normalizer(
+                {
+                    CONF_TIME_NORMALIZER_ENABLED: True,
+                    CONF_TIME_LOCALE: "fr-FR",
+                }
+            )
+
+    def test_time_locale_defaults_are_curated(self) -> None:
+        self.assertEqual(default_time_locale("de_DE"), "de-DE")
+        self.assertEqual(default_time_locale("fr-FR"), "")
+        self.assertIn("de-DE", supported_time_locales())
+        self.assertIn("en-US", supported_time_locales())
+
+    def test_normalizes_preview_text_from_unsaved_sectioned_time_config(self) -> None:
+        raw_config = {
+            SECTION_TIME: {
+                CONF_TIME_NORMALIZER_ENABLED: True,
+                CONF_TIME_LOCALE: "de-DE",
+            },
+            SECTION_NUMBERS: {
+                CONF_NUMBER_NORMALIZER_ENABLED: True,
+                CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
+            },
+        }
+
+        with (
+            patch(
+                "custom_components.tts_proxy.normalizer.supported_number_spellout_languages",
+                return_value=("de",),
+            ),
+            patch(
+                "custom_components.tts_proxy.normalizer._spellout_number",
+                side_effect=_fake_german_number,
+            ),
+            patch(
+                "custom_components.tts_proxy.time_normalizer._spellout_number_as",
+                side_effect=_fake_time_number,
+            ),
+        ):
+            self.assertEqual(
+                normalize_text_from_raw_config("Start 13:40 Uhr und 30W.", raw_config),
+                "Start dreizehn Uhr vierzig und 30W.",
+            )
+
+
 class DateNormalizerTests(unittest.TestCase):
     """Date Normalizer behavior."""
 
@@ -1722,6 +1978,31 @@ class StreamingNormalizerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual("".join(output), "Temp dreißig Grad.")
 
+    async def test_stream_time_normalizer_can_span_chunks(self) -> None:
+        output = await _collect_stream(
+            ["Start 1", "3:4", "0 Uhr."],
+            [],
+            time_normalizer=_time_normalizer(locale="de-DE"),
+            safety_tail_chars=64,
+            max_buffer_chars=500,
+        )
+
+        self.assertEqual("".join(output), "Start dreizehn Uhr vierzig.")
+
+    async def test_stream_time_range_normalizer_can_span_chunks(self) -> None:
+        output = await _collect_stream(
+            ["Termin 14", ":30 - 15", ":30 Uhr."],
+            [],
+            time_normalizer=_time_normalizer(locale="de-DE"),
+            safety_tail_chars=64,
+            max_buffer_chars=500,
+        )
+
+        self.assertEqual(
+            "".join(output),
+            "Termin vierzehn Uhr dreißig bis fünfzehn Uhr dreißig.",
+        )
+
     async def test_stream_does_not_flush_no_year_date_as_sentence_boundary(self) -> None:
         output = await _collect_stream(
             ["Termin am 14.05. um 12 Uhr."],
@@ -1806,6 +2087,11 @@ class ConfigTests(unittest.TestCase):
                     CONF_EMOJI_NORMALIZER_ENABLED: True,
                     CONF_EMOJI_HANDLING: EMOJI_HANDLING_SPELLOUT,
                     CONF_EMOJI_LANGUAGE: "de",
+                    CONF_TIME_NORMALIZER_ENABLED: True,
+                    CONF_TIME_LOCALE: "de-DE",
+                    CONF_TIME_RANGES_ENABLED: True,
+                    CONF_TIME_CLOCK_TIMES_ENABLED: True,
+                    CONF_TIME_DURATIONS_ENABLED: False,
                     CONF_UNIT_NORMALIZER_ENABLED: True,
                     CONF_UNIT_LOCALE: "de-DE",
                     CONF_NUMBER_NORMALIZER_ENABLED: False,
@@ -1824,6 +2110,11 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(config.emoji_normalizer.enabled)
         self.assertEqual(config.emoji_normalizer.handling, EMOJI_HANDLING_SPELLOUT)
         self.assertEqual(config.emoji_normalizer.language, "de")
+        self.assertTrue(config.time_normalizer.enabled)
+        self.assertEqual(config.time_normalizer.locale, "de-DE")
+        self.assertTrue(config.time_normalizer.time_ranges_enabled)
+        self.assertTrue(config.time_normalizer.clock_times_enabled)
+        self.assertFalse(config.time_normalizer.durations_enabled)
         self.assertTrue(config.unit_normalizer.enabled)
         self.assertEqual(config.unit_normalizer.locale, "de-DE")
         self.assertFalse(config.number_normalizer.enabled)
@@ -1897,6 +2188,13 @@ class ConfigTests(unittest.TestCase):
                         CONF_DATE_STANDALONE_YEAR_MIN: 1900,
                         CONF_DATE_STANDALONE_YEAR_MAX: 1999,
                     },
+                    SECTION_TIME: {
+                        CONF_TIME_NORMALIZER_ENABLED: True,
+                        CONF_TIME_LOCALE: "en_us",
+                        CONF_TIME_RANGES_ENABLED: True,
+                        CONF_TIME_CLOCK_TIMES_ENABLED: False,
+                        CONF_TIME_DURATIONS_ENABLED: True,
+                    },
                     SECTION_UNITS: {
                         CONF_UNIT_NORMALIZER_ENABLED: True,
                         CONF_UNIT_LOCALE: "en_us",
@@ -1919,6 +2217,11 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(config[CONF_DATE_STANDALONE_YEARS_ENABLED])
         self.assertEqual(config[CONF_DATE_STANDALONE_YEAR_MIN], 1900)
         self.assertEqual(config[CONF_DATE_STANDALONE_YEAR_MAX], 1999)
+        self.assertTrue(config[CONF_TIME_NORMALIZER_ENABLED])
+        self.assertEqual(config[CONF_TIME_LOCALE], "en-US")
+        self.assertTrue(config[CONF_TIME_RANGES_ENABLED])
+        self.assertFalse(config[CONF_TIME_CLOCK_TIMES_ENABLED])
+        self.assertTrue(config[CONF_TIME_DURATIONS_ENABLED])
         self.assertTrue(config[CONF_UNIT_NORMALIZER_ENABLED])
         self.assertEqual(config[CONF_UNIT_LOCALE], "en-US")
         self.assertNotIn(SECTION_GENERAL, config)
@@ -1926,6 +2229,7 @@ class ConfigTests(unittest.TestCase):
         self.assertNotIn(SECTION_TEXT_CLEANUP, config)
         self.assertNotIn(SECTION_EMOJI, config)
         self.assertNotIn(SECTION_DATES, config)
+        self.assertNotIn(SECTION_TIME, config)
         self.assertNotIn(SECTION_UNITS, config)
         self.assertNotIn(SECTION_NUMBERS, config)
 

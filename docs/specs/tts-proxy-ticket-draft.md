@@ -122,7 +122,7 @@ This breakdown captures the initial implementation plan for TTS Proxy.
 **Acceptance criteria**
 
 - [ ] Markdown Cleanup is a separate optional normalizer and is disabled by default.
-- [ ] Markdown Cleanup runs after Replacement Rules and before Text Cleanup, Emoji Normalizer, Date Normalizer, Unit Normalizer, and Number Normalizer.
+- [ ] Markdown Cleanup runs after Replacement Rules and before Text Cleanup, Emoji Normalizer, Date Normalizer, Time Normalizer, Unit Normalizer, and Number Normalizer.
 - [ ] Each cleanup behavior can be enabled independently.
 - [ ] Enabled cleanup can strip emphasis, headings, list markers, table formatting, Markdown links, inline code backticks, blockquote markers, divider lines, strikethrough markers, and image syntax.
 - [ ] Plain URL removal and fenced code block removal are opt-in.
@@ -143,7 +143,7 @@ This breakdown captures the initial implementation plan for TTS Proxy.
 **Acceptance criteria**
 
 - [ ] Emoji Normalizer is a separate optional normalizer and is disabled by default.
-- [ ] Emoji Normalizer runs after Markdown Cleanup and Text Cleanup and before Date Normalizer, Unit Normalizer, and Number Normalizer.
+- [ ] Emoji Normalizer runs after Markdown Cleanup and Text Cleanup and before Date Normalizer, Time Normalizer, Unit Normalizer, and Number Normalizer.
 - [ ] Emoji Handling is a dropdown with Spell out emoji and Remove emoji.
 - [ ] Spell out emoji is the default handling when the normalizer is enabled.
 - [ ] Emoji Language is selected from the languages supported by the emoji package.
@@ -163,7 +163,7 @@ This breakdown captures the initial implementation plan for TTS Proxy.
 **Acceptance criteria**
 
 - [ ] Unit Normalizer is a separate optional normalizer and is disabled by default.
-- [ ] Unit Normalizer runs after Date Normalizer and before Number Normalizer.
+- [ ] Unit Normalizer runs after Time Normalizer and before Number Normalizer.
 - [ ] Unit Locale defaults from Output Language and remains separately configurable.
 - [ ] German and English output use curated unit wording with limited singular/plural handling.
 - [ ] Other Unit Locales use a conservative fallback.
@@ -173,3 +173,25 @@ This breakdown captures the initial implementation plan for TTS Proxy.
 - [ ] Bare `m` is not treated as meters.
 - [ ] Provider Control Tags are preserved.
 - [ ] Tests cover catalog output, boundaries, pipeline order, streaming, config parsing, and sectioned preview config.
+
+## 10 - Add Time Normalizer
+
+**Blocked by:** 08 - Add Emoji Normalizer.
+
+**What it delivers:** A user can optionally normalize common clock times, time ranges, and durations before unit and number normalization.
+
+**Acceptance criteria**
+
+- [ ] Time Normalizer is a separate optional normalizer and is disabled by default.
+- [ ] Time Normalizer runs after Date Normalizer and before Unit Normalizer.
+- [ ] Time Locale defaults from Output Language when German or English is supported and remains separately configurable.
+- [ ] German and English output use curated wording.
+- [ ] Clock Time Detection and Time Range Detection are enabled by default.
+- [ ] Duration Detection is opt-in.
+- [ ] German clock times such as `13:40 Uhr` render as `dreizehn Uhr vierzig`.
+- [ ] English clock times support attached or spaced `am`/`pm` markers.
+- [ ] Time ranges support `-`, `–`, `—`, `bis`, and `to` as locale-appropriate range markers.
+- [ ] Duration detection handles `1:30h`, `1:30 h`, and `01:30:00`.
+- [ ] Structured tokens such as IPs, identifiers, ratios, invalid clock values, and clock times with seconds are skipped.
+- [ ] Provider Control Tags are preserved.
+- [ ] Tests cover German and English output, ranges, durations, boundaries, pipeline order, streaming, config parsing, and sectioned preview config.

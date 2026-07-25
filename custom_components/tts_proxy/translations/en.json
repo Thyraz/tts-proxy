@@ -78,6 +78,19 @@
               "date_standalone_year_max": "Maximum Standalone Year"
             }
           },
+          "time": {
+            "name": "Time Normalizer",
+            "data": {
+              "time_normalizer_enabled": "Enable Time Normalizer",
+              "time_locale": "Time Locale",
+              "time_ranges_enabled": "Enable Time Range Detection",
+              "time_clock_times_enabled": "Enable Clock Time Detection",
+              "time_durations_enabled": "Enable Duration Detection"
+            },
+            "data_description": {
+              "time_normalizer_enabled": "Subrules below are only applied if this global switch is enabled."
+            }
+          },
           "units": {
             "name": "Unit Normalizer",
             "data": {
@@ -108,6 +121,7 @@
       "invalid_rule": "One or more Replacement Rules are invalid.",
       "invalid_emoji_normalizer": "Select a supported Emoji Language when Spell out emoji is enabled.",
       "invalid_date_normalizer": "Check Date Locale, Date Renderer, Date Input Formats, and Standalone Year range.",
+      "invalid_time_normalizer": "Select a supported Time Locale when the Time Normalizer is enabled.",
       "invalid_unit_normalizer": "Select a Unit Locale when the Unit Normalizer is enabled.",
       "invalid_number_normalizer": "Select a supported Number Spellout Language when the Number Normalizer is enabled.",
       "invalid_buffer_config": "Maximal Buffer Limit must be greater than Minimal Lookahead Buffer Length."
@@ -191,6 +205,19 @@
               "date_standalone_year_max": "Maximum Standalone Year"
             }
           },
+          "time": {
+            "name": "Time Normalizer",
+            "data": {
+              "time_normalizer_enabled": "Enable Time Normalizer",
+              "time_locale": "Time Locale",
+              "time_ranges_enabled": "Enable Time Range Detection",
+              "time_clock_times_enabled": "Enable Clock Time Detection",
+              "time_durations_enabled": "Enable Duration Detection"
+            },
+            "data_description": {
+              "time_normalizer_enabled": "Subrules below are only applied if this global switch is enabled."
+            }
+          },
           "units": {
             "name": "Unit Normalizer",
             "data": {
@@ -221,6 +248,7 @@
       "invalid_rule": "One or more Replacement Rules are invalid.",
       "invalid_emoji_normalizer": "Select a supported Emoji Language when Spell out emoji is enabled.",
       "invalid_date_normalizer": "Check Date Locale, Date Renderer, Date Input Formats, and Standalone Year range.",
+      "invalid_time_normalizer": "Select a supported Time Locale when the Time Normalizer is enabled.",
       "invalid_unit_normalizer": "Select a Unit Locale when the Unit Normalizer is enabled.",
       "invalid_number_normalizer": "Select a supported Number Spellout Language when the Number Normalizer is enabled.",
       "invalid_buffer_config": "Maximal Buffer Limit must be greater than Minimal Lookahead Buffer Length."

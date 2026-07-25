@@ -38,6 +38,11 @@ from .const import (
     CONF_REPLACEMENT_RULES,
     CONF_SAFETY_TAIL_CHARS,
     CONF_TEXT_CLEANUP_REPLACE_LINE_BREAKS,
+    CONF_TIME_CLOCK_TIMES_ENABLED,
+    CONF_TIME_DURATIONS_ENABLED,
+    CONF_TIME_LOCALE,
+    CONF_TIME_NORMALIZER_ENABLED,
+    CONF_TIME_RANGES_ENABLED,
     CONF_UNIT_LOCALE,
     CONF_UNIT_NORMALIZER_ENABLED,
     DEFAULT_MAX_BUFFER_CHARS,
@@ -63,6 +68,7 @@ from .text_cleanup_normalizer import (
     TextCleanupNormalizer,
     parse_text_cleanup_normalizer,
 )
+from .time_normalizer import TimeNormalizer, parse_time_normalizer
 from .unit_normalizer import UnitNormalizer, parse_unit_normalizer
 from .normalizer import (
     NumberNormalizer,
@@ -88,6 +94,7 @@ class ProxyConfig:
     text_cleanup_normalizer: TextCleanupNormalizer
     emoji_normalizer: EmojiNormalizer
     date_normalizer: DateNormalizer
+    time_normalizer: TimeNormalizer
     unit_normalizer: UnitNormalizer
     number_normalizer: NumberNormalizer
     safety_tail_chars: int
@@ -131,6 +138,7 @@ def parse_proxy_config(raw_config: dict[str, Any]) -> ProxyConfig:
         text_cleanup_normalizer=parse_text_cleanup_normalizer(raw_config),
         emoji_normalizer=parse_emoji_normalizer(raw_config),
         date_normalizer=parse_date_normalizer(raw_config),
+        time_normalizer=parse_time_normalizer(raw_config),
         unit_normalizer=parse_unit_normalizer(raw_config),
         number_normalizer=parse_number_normalizer(raw_config),
         safety_tail_chars=safety_tail_chars,
@@ -188,6 +196,11 @@ def serializable_config(raw_config: dict[str, Any]) -> dict[str, Any]:
         ),
         CONF_DATE_STANDALONE_YEAR_MIN: config.date_normalizer.standalone_year_min,
         CONF_DATE_STANDALONE_YEAR_MAX: config.date_normalizer.standalone_year_max,
+        CONF_TIME_NORMALIZER_ENABLED: config.time_normalizer.enabled,
+        CONF_TIME_LOCALE: config.time_normalizer.locale,
+        CONF_TIME_RANGES_ENABLED: config.time_normalizer.time_ranges_enabled,
+        CONF_TIME_CLOCK_TIMES_ENABLED: config.time_normalizer.clock_times_enabled,
+        CONF_TIME_DURATIONS_ENABLED: config.time_normalizer.durations_enabled,
         CONF_UNIT_NORMALIZER_ENABLED: config.unit_normalizer.enabled,
         CONF_UNIT_LOCALE: config.unit_normalizer.locale,
         CONF_NUMBER_NORMALIZER_ENABLED: config.number_normalizer.enabled,

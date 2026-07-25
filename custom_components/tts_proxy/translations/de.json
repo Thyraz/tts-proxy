@@ -78,6 +78,19 @@
               "date_standalone_year_max": "Größte einzelne Jahreszahl"
             }
           },
+          "time": {
+            "name": "Zeitnormalisierung",
+            "data": {
+              "time_normalizer_enabled": "Zeitnormalisierung aktivieren",
+              "time_locale": "Zeit-Locale",
+              "time_ranges_enabled": "Zeitspannen erkennen",
+              "time_clock_times_enabled": "Uhrzeiten erkennen",
+              "time_durations_enabled": "Dauern erkennen"
+            },
+            "data_description": {
+              "time_normalizer_enabled": "Die Unterregeln darunter werden nur angewendet, wenn dieser globale Schalter aktiviert ist."
+            }
+          },
           "units": {
             "name": "Einheiten-Normalisierung",
             "data": {
@@ -108,6 +121,7 @@
       "invalid_rule": "Eine oder mehrere Ersetzungsregeln sind ungültig.",
       "invalid_emoji_normalizer": "Wähle eine unterstützte Emoji-Sprache, wenn Emoji ausgeschrieben werden sollen.",
       "invalid_date_normalizer": "Prüfe Datums-Locale, Datums-Renderer, Datumsformate und Bereich für einzelne Jahreszahlen.",
+      "invalid_time_normalizer": "Wähle eine unterstützte Zeit-Locale, wenn die Zeitnormalisierung aktiviert ist.",
       "invalid_unit_normalizer": "Wähle eine Einheiten-Locale, wenn die Einheiten-Normalisierung aktiviert ist.",
       "invalid_number_normalizer": "Wähle eine unterstützte Sprache für ausgeschriebene Zahlen, wenn die Zahlennormalisierung aktiviert ist.",
       "invalid_buffer_config": "Das maximale Pufferlimit muss größer als die minimale Lookahead-Pufferlänge sein."
@@ -191,6 +205,19 @@
               "date_standalone_year_max": "Größte einzelne Jahreszahl"
             }
           },
+          "time": {
+            "name": "Zeitnormalisierung",
+            "data": {
+              "time_normalizer_enabled": "Zeitnormalisierung aktivieren",
+              "time_locale": "Zeit-Locale",
+              "time_ranges_enabled": "Zeitspannen erkennen",
+              "time_clock_times_enabled": "Uhrzeiten erkennen",
+              "time_durations_enabled": "Dauern erkennen"
+            },
+            "data_description": {
+              "time_normalizer_enabled": "Die Unterregeln darunter werden nur angewendet, wenn dieser globale Schalter aktiviert ist."
+            }
+          },
           "units": {
             "name": "Einheiten-Normalisierung",
             "data": {
@@ -221,6 +248,7 @@
       "invalid_rule": "Eine oder mehrere Ersetzungsregeln sind ungültig.",
       "invalid_emoji_normalizer": "Wähle eine unterstützte Emoji-Sprache, wenn Emoji ausgeschrieben werden sollen.",
       "invalid_date_normalizer": "Prüfe Datums-Locale, Datums-Renderer, Datumsformate und Bereich für einzelne Jahreszahlen.",
+      "invalid_time_normalizer": "Wähle eine unterstützte Zeit-Locale, wenn die Zeitnormalisierung aktiviert ist.",
       "invalid_unit_normalizer": "Wähle eine Einheiten-Locale, wenn die Einheiten-Normalisierung aktiviert ist.",
       "invalid_number_normalizer": "Wähle eine unterstützte Sprache für ausgeschriebene Zahlen, wenn die Zahlennormalisierung aktiviert ist.",
       "invalid_buffer_config": "Das maximale Pufferlimit muss größer als die minimale Lookahead-Pufferlänge sein."

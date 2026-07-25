@@ -1,6 +1,6 @@
 # TTS Proxy
 
-This context covers text replacement and date/number detection before Home Assistant text-to-speech synthesis.
+This context covers text replacement and built-in text normalization before Home Assistant text-to-speech synthesis.
 
 ## Language
 
@@ -17,7 +17,7 @@ The single TTS language exposed by a Proxy TTS Entity and passed to its Target T
 _Avoid_: replacement language, input language
 
 **Proxy Configuration**:
-The setup and options data for one Proxy TTS Entity: display name, Target TTS Entity, Output Language, Replacement Rules, Markdown Cleanup settings, Text Cleanup settings, Emoji Normalizer settings, Date Normalizer settings, Unit Normalizer settings, Number Normalizer settings, and streaming buffer settings. The Output Language must be supported by the Target TTS Entity when the configuration is saved. Each config entry owns exactly one Proxy TTS Entity.
+The setup and options data for one Proxy TTS Entity: display name, Target TTS Entity, Output Language, Replacement Rules, Markdown Cleanup settings, Text Cleanup settings, Emoji Normalizer settings, Date Normalizer settings, Time Normalizer settings, Unit Normalizer settings, Number Normalizer settings, and streaming buffer settings. The Output Language must be supported by the Target TTS Entity when the configuration is saved. Each config entry owns exactly one Proxy TTS Entity.
 _Avoid_: runtime selector
 
 **Proxy Reconfiguration**:
@@ -37,11 +37,11 @@ An optional display-only label for a Replacement Rule. It helps identify a rule 
 _Avoid_: rule id, rule condition
 
 **Markdown Cleanup Normalizer**:
-An optional built-in normalizer owned by a Proxy TTS Entity that removes or simplifies configured Markdown syntax before Text Cleanup, Emoji Normalizer, Date Normalizer, Unit Normalizer, and Number Normalizer processing. It is cleanup-oriented rather than a semantic Markdown-to-speech renderer, and each supported Markdown feature can be enabled separately. The MVP supports common emphasis, heading, list, table, link, image, inline-code, code-block, blockquote, divider-line, strikethrough, and plain-URL cleanup, but not reference-style links, footnotes, definition lists, HTML cleanup, escaped Markdown punctuation, or nested Markdown edge cases.
+An optional built-in normalizer owned by a Proxy TTS Entity that removes or simplifies configured Markdown syntax before Text Cleanup, Emoji Normalizer, Date Normalizer, Time Normalizer, Unit Normalizer, and Number Normalizer processing. It is cleanup-oriented rather than a semantic Markdown-to-speech renderer, and each supported Markdown feature can be enabled separately. The MVP supports common emphasis, heading, list, table, link, image, inline-code, code-block, blockquote, divider-line, strikethrough, and plain-URL cleanup, but not reference-style links, footnotes, definition lists, HTML cleanup, escaped Markdown punctuation, or nested Markdown edge cases.
 _Avoid_: Markdown renderer, audio formatter
 
 **Text Cleanup Normalizer**:
-An optional built-in normalizer owned by a Proxy TTS Entity that simplifies plain text after Markdown Cleanup and before Emoji Normalizer, Date Normalizer, Unit Normalizer, and Number Normalizer processing. The MVP supports line-break cleanup.
+An optional built-in normalizer owned by a Proxy TTS Entity that simplifies plain text after Markdown Cleanup and before Emoji Normalizer, Date Normalizer, Time Normalizer, Unit Normalizer, and Number Normalizer processing. The MVP supports line-break cleanup.
 _Avoid_: Markdown cleanup, replacement rule
 
 **Emoji Normalizer**:
@@ -57,7 +57,7 @@ The language selected for Emoji Normalizer spellout names. It may default from O
 _Avoid_: output language, TTS language
 
 **Number Normalizer**:
-An optional built-in normalizer owned by a Proxy TTS Entity that converts eligible numeric text into language-specific spoken words after Replacement Rules, Date Normalizer, and Unit Normalizer processing have run and before delegating to the Target TTS Entity. It is configured separately from Replacement Rules because it needs token classification and language-specific number grammar, not simple string matching.
+An optional built-in normalizer owned by a Proxy TTS Entity that converts eligible numeric text into language-specific spoken words after Replacement Rules, Date Normalizer, Time Normalizer, and Unit Normalizer processing have run and before delegating to the Target TTS Entity. It is configured separately from Replacement Rules because it needs token classification and language-specific number grammar, not simple string matching.
 _Avoid_: number replacement rule, regex number rule
 
 **Unit Normalizer**:
@@ -121,8 +121,28 @@ The language selected for a Number Normalizer to spell numeric text as words. It
 _Avoid_: output language, TTS language
 
 **Date Normalizer**:
-An optional built-in normalizer owned by a Proxy TTS Entity that detects configured date strings, validates them as calendar dates, and replaces them with spoken date text before the Unit Normalizer and Number Normalizer run. Curated languages may use natural month-name output; other languages may fall back to numeric spoken date parts.
+An optional built-in normalizer owned by a Proxy TTS Entity that detects configured date strings, validates them as calendar dates, and replaces them with spoken date text before the Time Normalizer, Unit Normalizer, and Number Normalizer run. Curated languages may use natural month-name output; other languages may fall back to numeric spoken date parts.
 _Avoid_: date replacement rule, natural-language date parser
+
+**Time Normalizer**:
+An optional built-in normalizer owned by a Proxy TTS Entity that detects configured time-like tokens, validates them as either clock times or durations, and replaces them with spoken time text before the Unit Normalizer and Number Normalizer run. It is separate from Replacement Rules because it needs token classification, range validation, and language-specific rendering. The MVP supports curated German and English Time Locales only.
+_Avoid_: time replacement rule
+
+**Time Locale**:
+The locale selected for the Time Normalizer to choose curated clock-time and duration rendering. It may default from Output Language, but remains separate because Time Normalizer language support is intentionally narrower than Target TTS Entity language support.
+_Avoid_: output language, number spellout language
+
+**Clock Time Detection**:
+A Time Normalizer behavior for times of day such as `13:40`, `13:40 Uhr`, or `1:30 Uhr`. Bare two-part `H:MM` tokens are treated as clock times, not durations.
+_Avoid_: duration, timer
+
+**Time Range Detection**:
+A Time Normalizer behavior for two clock-time endpoints separated by a range marker such as `-`, `–`, or `bis`, with an optional shared clock marker like `Uhr` at the end. It runs before single Clock Time Detection so the endpoints can be rendered as one spoken range.
+_Avoid_: duration range, date range
+
+**Duration Detection**:
+A Time Normalizer behavior for elapsed time spans such as `1:30h` or `01:30:00`. It is separate from Clock Time Detection because two-part colon text is ambiguous without a duration marker.
+_Avoid_: clock time, time of day
 
 **Date Input Format**:
 A configured date token format that the Date Normalizer is allowed to detect, such as a day-month-year, year-month-day, or day-month-without-year format. Date Input Formats are owned by Proxy Configuration and are not inferred from a Home Assistant frontend user's profile.
@@ -141,7 +161,7 @@ A date string that contains a day and month but no year, such as `14.05.` or `15
 _Avoid_: incomplete date, implicit current-year date
 
 **Standalone Year Detection**:
-An optional Date Normalizer behavior that spells safe four-digit year tokens inside a configured minimum and maximum year range. It uses the Date Renderer year style, skips nearby units, identifier words, versions, IPs, and structured date fragments, and runs before the Number Normalizer.
+An optional Date Normalizer behavior that spells safe four-digit year tokens inside a configured minimum and maximum year range. It uses the Date Renderer year style, skips nearby units, identifier words, versions, IPs, and structured date fragments, and runs before the Time Normalizer, Unit Normalizer, and Number Normalizer.
 _Avoid_: big number spellout, broad year parser
 
 **Adjacent No-Year Date Text**:
@@ -169,7 +189,7 @@ A Date Renderer that speaks day, month, and optional year as numeric parts witho
 _Avoid_: generic date renderer, automatic locale support
 
 **Normalization Preview**:
-A configuration-time view of the text a Proxy TTS Entity would send to its Target TTS Entity after applying Replacement Rules, Markdown Cleanup, Text Cleanup, the Emoji Normalizer, the Date Normalizer, the Unit Normalizer, and the Number Normalizer. It uses unsaved form values when available, does not synthesize audio, and does not change saved configuration.
+A configuration-time view of the text a Proxy TTS Entity would send to its Target TTS Entity after applying Replacement Rules, Markdown Cleanup, Text Cleanup, the Emoji Normalizer, the Date Normalizer, the Time Normalizer, the Unit Normalizer, and the Number Normalizer. It uses unsaved form values when available, does not synthesize audio, and does not change saved configuration.
 _Avoid_: TTS preview, Assist preview, test playback
 
 **Rule Preset**:
@@ -177,7 +197,7 @@ A future package of suggested Replacement Rules for a common language or use cas
 _Avoid_: built-in grammar
 
 **Provider Control Tag**:
-Inline markup in TTS input that a Target TTS Entity may interpret as voice, pronunciation, pause, or delivery control. Provider Control Tags are preserved by the Proxy TTS Entity and are not changed by Replacement Rules, Text Cleanup, Emoji Normalizer, Date Normalizer, Unit Normalizer, or Number Normalizer. Markdown Cleanup may rewrite explicit Markdown constructs, but isolated Provider Control Tags stay opaque.
+Inline markup in TTS input that a Target TTS Entity may interpret as voice, pronunciation, pause, or delivery control. Provider Control Tags are preserved by the Proxy TTS Entity and are not changed by Replacement Rules, Text Cleanup, Emoji Normalizer, Date Normalizer, Time Normalizer, Unit Normalizer, or Number Normalizer. Markdown Cleanup may rewrite explicit Markdown constructs, but isolated Provider Control Tags stay opaque.
 _Avoid_: replacement target
 
 **Minimal Lookahead Buffer Length**:
