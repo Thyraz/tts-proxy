@@ -21,6 +21,9 @@ from .const import (
     CONF_DATE_LOCALE,
     CONF_DATE_NORMALIZER_ENABLED,
     CONF_DATE_RENDERER,
+    CONF_DATE_STANDALONE_YEAR_MAX,
+    CONF_DATE_STANDALONE_YEAR_MIN,
+    CONF_DATE_STANDALONE_YEARS_ENABLED,
     CONF_EMOJI_HANDLING,
     CONF_EMOJI_LANGUAGE,
     CONF_EMOJI_NORMALIZER_ENABLED,
@@ -45,6 +48,8 @@ from .const import (
     CONF_PREVIEW_TEXT,
     CONF_REPLACEMENT_RULES,
     CONF_SAFETY_TAIL_CHARS,
+    DEFAULT_DATE_STANDALONE_YEAR_MAX,
+    DEFAULT_DATE_STANDALONE_YEAR_MIN,
     DEFAULT_MAX_BUFFER_CHARS,
     DEFAULT_NAME,
     DEFAULT_SAFETY_TAIL_CHARS,
@@ -555,6 +560,28 @@ def _date_section_schema(
                         multiple=True,
                         mode="list",
                     )
+                ),
+                vol.Optional(
+                    CONF_DATE_STANDALONE_YEARS_ENABLED,
+                    default=defaults.get(CONF_DATE_STANDALONE_YEARS_ENABLED, False),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_DATE_STANDALONE_YEAR_MIN,
+                    default=defaults.get(
+                        CONF_DATE_STANDALONE_YEAR_MIN,
+                        DEFAULT_DATE_STANDALONE_YEAR_MIN,
+                    ),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=0, max=9999, mode="box")
+                ),
+                vol.Optional(
+                    CONF_DATE_STANDALONE_YEAR_MAX,
+                    default=defaults.get(
+                        CONF_DATE_STANDALONE_YEAR_MAX,
+                        DEFAULT_DATE_STANDALONE_YEAR_MAX,
+                    ),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=0, max=9999, mode="box")
                 ),
             }
         ),

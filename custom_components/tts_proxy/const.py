@@ -8,11 +8,16 @@ PLATFORMS = ["tts"]
 DEFAULT_NAME = "TTS Proxy"
 DEFAULT_SAFETY_TAIL_CHARS = 64
 DEFAULT_MAX_BUFFER_CHARS = 500
+DEFAULT_DATE_STANDALONE_YEAR_MIN = 1900
+DEFAULT_DATE_STANDALONE_YEAR_MAX = 2099
 
 CONF_DATE_INPUT_FORMATS = "date_input_formats"
 CONF_DATE_LOCALE = "date_locale"
 CONF_DATE_NORMALIZER_ENABLED = "date_normalizer_enabled"
 CONF_DATE_RENDERER = "date_renderer"
+CONF_DATE_STANDALONE_YEAR_MAX = "date_standalone_year_max"
+CONF_DATE_STANDALONE_YEAR_MIN = "date_standalone_year_min"
+CONF_DATE_STANDALONE_YEARS_ENABLED = "date_standalone_years_enabled"
 CONF_EMOJI_HANDLING = "emoji_handling"
 CONF_EMOJI_LANGUAGE = "emoji_language"
 CONF_EMOJI_NORMALIZER_ENABLED = "emoji_normalizer_enabled"

@@ -16,6 +16,9 @@ from custom_components.tts_proxy.const import (
     CONF_DATE_LOCALE,
     CONF_DATE_NORMALIZER_ENABLED,
     CONF_DATE_RENDERER,
+    CONF_DATE_STANDALONE_YEAR_MAX,
+    CONF_DATE_STANDALONE_YEAR_MIN,
+    CONF_DATE_STANDALONE_YEARS_ENABLED,
     CONF_EMOJI_HANDLING,
     CONF_EMOJI_LANGUAGE,
     CONF_EMOJI_NORMALIZER_ENABLED,
@@ -57,6 +60,7 @@ from custom_components.tts_proxy.const import (
     RULE_NAME,
     RULE_REPLACE,
     SECTION_GENERAL,
+    SECTION_DATES,
     SECTION_EMOJI,
     SECTION_MARKDOWN,
     SECTION_NUMBERS,
@@ -140,6 +144,7 @@ def _fake_date_number(value: int, language: str, purpose: str) -> str:
         ("de", "ordinal", 25): "fünfundzwanzigste",
         ("de", "ordinal", 27): "siebenundzwanzigste",
         ("de", "year", 1984): "neunzehnhundertvierundachtzig",
+        ("de", "year", 1942): "neunzehnhundertzweiundvierzig",
         ("de", "year", 2025): "zweitausendfünfundzwanzig",
         ("de", "year", 2026): "zweitausendsechsundzwanzig",
         ("en", "ordinal", 15): "fifteenth",
@@ -223,6 +228,9 @@ def _date_normalizer(
         DATE_INPUT_FORMAT_DMY_MONTH_NAME,
         DATE_INPUT_FORMAT_YMD_DASH,
     ),
+    standalone_years_enabled: bool = False,
+    standalone_year_min: int = 1900,
+    standalone_year_max: int = 2099,
 ) -> DateNormalizer:
     """Return an enabled fake Date Normalizer."""
     return DateNormalizer(
@@ -230,6 +238,9 @@ def _date_normalizer(
         locale=locale,
         renderer=renderer,
         input_formats=input_formats,
+        standalone_years_enabled=standalone_years_enabled,
+        standalone_year_min=standalone_year_min,
+        standalone_year_max=standalone_year_max,
         converter=_fake_date_number,
     )
 
@@ -1013,6 +1024,64 @@ class DateNormalizerTests(unittest.TestCase):
             "Termin fünfzehnter August.",
         )
 
+    def test_standalone_years_can_be_rendered_as_dates(self) -> None:
+        german = _date_normalizer(
+            standalone_years_enabled=True,
+            standalone_year_min=1900,
+            standalone_year_max=1999,
+        )
+        english = _date_normalizer(
+            locale="en-US",
+            input_formats=(DATE_INPUT_FORMAT_MDY_MONTH_NAME,),
+            standalone_years_enabled=True,
+            standalone_year_min=1900,
+            standalone_year_max=2050,
+        )
+
+        self.assertEqual(
+            german.normalize("Das Haus wurde 1942 gebaut."),
+            "Das Haus wurde neunzehnhundertzweiundvierzig gebaut.",
+        )
+        self.assertEqual(
+            english.normalize("The forecast starts in 2025."),
+            "The forecast starts in twenty twenty-five.",
+        )
+
+    def test_standalone_year_detection_is_disabled_by_default(self) -> None:
+        normalizer = _date_normalizer()
+
+        self.assertEqual(normalizer.normalize("Seit 1942 aktiv."), "Seit 1942 aktiv.")
+
+    def test_standalone_year_detection_respects_configured_range(self) -> None:
+        normalizer = _date_normalizer(
+            standalone_years_enabled=True,
+            standalone_year_min=1900,
+            standalone_year_max=1999,
+        )
+
+        self.assertEqual(
+            normalizer.normalize("Jahre 1942 und 2025."),
+            "Jahre neunzehnhundertzweiundvierzig und 2025.",
+        )
+
+    def test_standalone_year_detection_skips_measurements_codes_and_structures(
+        self,
+    ) -> None:
+        normalizer = _date_normalizer(
+            input_formats=(),
+            standalone_years_enabled=True,
+            standalone_year_min=1900,
+            standalone_year_max=2099,
+        )
+        text = (
+            "Leistung 1942 W, Leistung 1942 Watt, Energie 1942 kWh, "
+            "Temperatur 2025 Grad, Anteil 2025 Prozent, Fehlercode 1942, "
+            "PIN 1942, Version v2025.1, Datum 2026-07-25, "
+            "IP 192.168.1.1, sensor_2025."
+        )
+
+        self.assertEqual(normalizer.normalize(text), text)
+
     def test_month_name_date_inside_markdown_bold_is_normalized_before_numbers(
         self,
     ) -> None:
@@ -1121,6 +1190,48 @@ class DateNormalizerTests(unittest.TestCase):
                     CONF_DATE_LOCALE: "fr-FR",
                     CONF_DATE_RENDERER: DATE_RENDERER_CURATED,
                     CONF_DATE_INPUT_FORMATS: [DATE_INPUT_FORMAT_DMY_DOT],
+                }
+            )
+
+    def test_parse_date_normalizer_allows_standalone_years_without_input_formats(
+        self,
+    ) -> None:
+        with patch(
+            "custom_components.tts_proxy.date_normalizer._supported_spellout_languages",
+            return_value=("de", "en"),
+        ):
+            normalizer = parse_date_normalizer(
+                {
+                    CONF_DATE_NORMALIZER_ENABLED: True,
+                    CONF_DATE_LOCALE: "de-DE",
+                    CONF_DATE_RENDERER: DATE_RENDERER_CURATED,
+                    CONF_DATE_INPUT_FORMATS: [],
+                    CONF_DATE_STANDALONE_YEARS_ENABLED: True,
+                    CONF_DATE_STANDALONE_YEAR_MIN: 1900,
+                    CONF_DATE_STANDALONE_YEAR_MAX: 1999,
+                }
+            )
+
+        self.assertTrue(normalizer.standalone_years_enabled)
+        self.assertEqual(normalizer.input_formats, ())
+
+    def test_parse_date_normalizer_rejects_invalid_standalone_year_range(self) -> None:
+        with (
+            patch(
+                "custom_components.tts_proxy.date_normalizer._supported_spellout_languages",
+                return_value=("de", "en"),
+            ),
+            self.assertRaises(DateNormalizationError),
+        ):
+            parse_date_normalizer(
+                {
+                    CONF_DATE_NORMALIZER_ENABLED: True,
+                    CONF_DATE_LOCALE: "de-DE",
+                    CONF_DATE_RENDERER: DATE_RENDERER_CURATED,
+                    CONF_DATE_INPUT_FORMATS: [DATE_INPUT_FORMAT_DMY_DOT],
+                    CONF_DATE_STANDALONE_YEARS_ENABLED: True,
+                    CONF_DATE_STANDALONE_YEAR_MIN: 2050,
+                    CONF_DATE_STANDALONE_YEAR_MAX: 1900,
                 }
             )
 
@@ -1244,6 +1355,25 @@ class StreamingNormalizerTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual("".join(output), "Termin am vierzehnten Mai um 12 Uhr.")
+
+    async def test_stream_standalone_year_normalizer_can_span_chunks(self) -> None:
+        output = await _collect_stream(
+            ["Seit 19", "42 aktiv."],
+            [],
+            None,
+            _date_normalizer(
+                standalone_years_enabled=True,
+                standalone_year_min=1900,
+                standalone_year_max=1999,
+            ),
+            safety_tail_chars=64,
+            max_buffer_chars=500,
+        )
+
+        self.assertEqual(
+            "".join(output),
+            "Seit neunzehnhundertzweiundvierzig aktiv.",
+        )
 
     async def test_stream_does_not_flush_no_year_date_as_sentence_boundary(self) -> None:
         output = await _collect_stream(
@@ -1376,9 +1506,15 @@ class ConfigTests(unittest.TestCase):
         self.assertNotIn(CONF_PREVIEW_TEXT, config)
 
     def test_serializable_config_flattens_form_sections(self) -> None:
-        with patch(
-            "custom_components.tts_proxy.emoji_normalizer.supported_emoji_languages",
-            return_value=("de", "en"),
+        with (
+            patch(
+                "custom_components.tts_proxy.emoji_normalizer.supported_emoji_languages",
+                return_value=("de", "en"),
+            ),
+            patch(
+                "custom_components.tts_proxy.date_normalizer._supported_spellout_languages",
+                return_value=("de", "en"),
+            ),
         ):
             config = serializable_config(
                 {
@@ -1398,6 +1534,15 @@ class ConfigTests(unittest.TestCase):
                         CONF_EMOJI_HANDLING: EMOJI_HANDLING_REMOVE,
                         CONF_EMOJI_LANGUAGE: "",
                     },
+                    SECTION_DATES: {
+                        CONF_DATE_NORMALIZER_ENABLED: True,
+                        CONF_DATE_LOCALE: "de-DE",
+                        CONF_DATE_RENDERER: DATE_RENDERER_CURATED,
+                        CONF_DATE_INPUT_FORMATS: [DATE_INPUT_FORMAT_DMY_DOT],
+                        CONF_DATE_STANDALONE_YEARS_ENABLED: True,
+                        CONF_DATE_STANDALONE_YEAR_MIN: 1900,
+                        CONF_DATE_STANDALONE_YEAR_MAX: 1999,
+                    },
                     SECTION_NUMBERS: {
                         CONF_NUMBER_NORMALIZER_ENABLED: False,
                         CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
@@ -1412,9 +1557,13 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(config[CONF_MARKDOWN_STRIP_TABLES])
         self.assertTrue(config[CONF_EMOJI_NORMALIZER_ENABLED])
         self.assertEqual(config[CONF_EMOJI_HANDLING], EMOJI_HANDLING_REMOVE)
+        self.assertTrue(config[CONF_DATE_STANDALONE_YEARS_ENABLED])
+        self.assertEqual(config[CONF_DATE_STANDALONE_YEAR_MIN], 1900)
+        self.assertEqual(config[CONF_DATE_STANDALONE_YEAR_MAX], 1999)
         self.assertNotIn(SECTION_GENERAL, config)
         self.assertNotIn(SECTION_MARKDOWN, config)
         self.assertNotIn(SECTION_EMOJI, config)
+        self.assertNotIn(SECTION_DATES, config)
         self.assertNotIn(SECTION_NUMBERS, config)
 
     def test_serializable_config_converts_legacy_rule_fields(self) -> None:

@@ -13,8 +13,13 @@ from .const import (
     CONF_DATE_LOCALE,
     CONF_DATE_NORMALIZER_ENABLED,
     CONF_DATE_RENDERER,
+    CONF_DATE_STANDALONE_YEAR_MAX,
+    CONF_DATE_STANDALONE_YEAR_MIN,
+    CONF_DATE_STANDALONE_YEARS_ENABLED,
     CONF_NUMBER_SPELLOUT_LANGUAGE,
     CONF_OUTPUT_LANGUAGE,
+    DEFAULT_DATE_STANDALONE_YEAR_MAX,
+    DEFAULT_DATE_STANDALONE_YEAR_MIN,
     DATE_INPUT_FORMAT_DMY_DOT,
     DATE_INPUT_FORMAT_DMY_DOT_NO_YEAR,
     DATE_INPUT_FORMAT_DMY_DOT_SPACED,
@@ -33,6 +38,7 @@ from .const import (
 DateNumberConverter = Callable[[int, str, str], str]
 
 _FULL_YEAR_RE = r"(?:19|20)\d{2}"
+_STANDALONE_YEAR_RE = re.compile(r"\d{4}")
 _DAY_RE = r"(?:[12]\d|3[01]|0?[1-9])"
 _MONTH_RE = r"(?:1[0-2]|0?[1-9])"
 _SUPPORTED_INPUT_FORMATS = (
@@ -148,6 +154,36 @@ _GERMAN_WEAK_OBLIQUE_DATE_CONTEXT = {
     "zum",
 }
 _GERMAN_STRONG_DATIVE_DATE_CONTEXT = {"ab", "nach", "seit", "von", "vor"}
+_STANDALONE_YEAR_SKIP_WORDS = {
+    "code",
+    "error",
+    "fehler",
+    "fehlercode",
+    "firmware",
+    "fw",
+    "id",
+    "ids",
+    "model",
+    "modell",
+    "pin",
+    "port",
+    "v",
+    "version",
+}
+_STANDALONE_YEAR_SKIP_WORD_PAIRS = {
+    ("error", "code"),
+    ("fehler", "code"),
+}
+_STANDALONE_YEAR_UNIT_RE = re.compile(
+    r"\s*(?:"
+    r"km/h|kwh|hpa|mbar|ppm|mA|kw|wh|mm|cm|km|lx|lm|"
+    r"°c|°f|w|v|a|k|m|%|"
+    r"kilowattstunden|kilowatts?|watts?|watt|volt|ampere|"
+    r"degrees?|grad|prozent|percent|lux|lumen|kelvin|"
+    r"millimeters?|millimetres?|meters?|metres?"
+    r")(?=$|[\s,.;:!?)\]}])",
+    re.IGNORECASE,
+)
 _NUMERIC_FALLBACK_DATE_LOCALES = (
     "fr",
     "fr-FR",
@@ -204,6 +240,9 @@ class DateNormalizer:
     locale: str = ""
     renderer: str = DATE_RENDERER_CURATED
     input_formats: tuple[str, ...] = ()
+    standalone_years_enabled: bool = False
+    standalone_year_min: int = DEFAULT_DATE_STANDALONE_YEAR_MIN
+    standalone_year_max: int = DEFAULT_DATE_STANDALONE_YEAR_MAX
     converter: DateNumberConverter | None = None
 
     def normalize(self, text: str) -> str:
@@ -214,6 +253,11 @@ class DateNormalizer:
         normalized = text
         for input_format in self.input_formats:
             normalized = self._normalize_format(normalized, input_format)
+        if self.standalone_years_enabled:
+            normalized = _STANDALONE_YEAR_RE.sub(
+                self._replace_standalone_year_match,
+                normalized,
+            )
         return normalized
 
     def _normalize_format(self, text: str, input_format: str) -> str:
@@ -306,6 +350,30 @@ class DateNormalizer:
             return _render_english_date(parsed, self.locale, self._converter)
         return _render_numeric_fallback_date(parsed, language, self._converter)
 
+    def _replace_standalone_year_match(self, match: re.Match[str]) -> str:
+        """Replace one standalone year candidate."""
+        if not _is_standalone_year_match(
+            match,
+            self.standalone_year_min,
+            self.standalone_year_max,
+        ):
+            return match.group(0)
+
+        try:
+            return _render_standalone_year(
+                int(match.group(0)),
+                _language_from_locale(self.locale),
+                self._converter,
+            )
+        except (
+            ArithmeticError,
+            ImportError,
+            NotImplementedError,
+            TypeError,
+            ValueError,
+        ):
+            return match.group(0)
+
     @property
     def _converter(self) -> DateNumberConverter:
         """Return the configured converter or the num2words-backed converter."""
@@ -325,6 +393,19 @@ def parse_date_normalizer(raw_config: Mapping[str, Any]) -> DateNormalizer:
     renderer = str(raw_config.get(CONF_DATE_RENDERER) or default_date_renderer(locale))
     input_formats = _parse_input_formats(raw_config.get(CONF_DATE_INPUT_FORMATS), locale)
     enabled = bool(raw_config.get(CONF_DATE_NORMALIZER_ENABLED, False))
+    standalone_years_enabled = bool(
+        raw_config.get(CONF_DATE_STANDALONE_YEARS_ENABLED, False)
+    )
+    standalone_year_min = _parse_standalone_year_boundary(
+        raw_config.get(CONF_DATE_STANDALONE_YEAR_MIN),
+        DEFAULT_DATE_STANDALONE_YEAR_MIN,
+        "Minimum Standalone Year",
+    )
+    standalone_year_max = _parse_standalone_year_boundary(
+        raw_config.get(CONF_DATE_STANDALONE_YEAR_MAX),
+        DEFAULT_DATE_STANDALONE_YEAR_MAX,
+        "Maximum Standalone Year",
+    )
 
     if not enabled:
         return DateNormalizer(
@@ -332,6 +413,9 @@ def parse_date_normalizer(raw_config: Mapping[str, Any]) -> DateNormalizer:
             locale=locale,
             renderer=renderer,
             input_formats=input_formats,
+            standalone_years_enabled=standalone_years_enabled,
+            standalone_year_min=standalone_year_min,
+            standalone_year_max=standalone_year_max,
         )
 
     if not locale:
@@ -345,8 +429,10 @@ def parse_date_normalizer(raw_config: Mapping[str, Any]) -> DateNormalizer:
         raise DateNormalizationError(
             f"Curated Date Renderer is not available for {locale}"
         )
-    if not input_formats:
-        raise DateNormalizationError("At least one Date Input Format is required")
+    if not input_formats and not standalone_years_enabled:
+        raise DateNormalizationError(
+            "At least one Date Input Format or Standalone Year Detection is required"
+        )
     unsupported_formats = set(input_formats) - set(_SUPPORTED_INPUT_FORMATS)
     if unsupported_formats:
         raise DateNormalizationError(
@@ -354,12 +440,19 @@ def parse_date_normalizer(raw_config: Mapping[str, Any]) -> DateNormalizer:
         )
     if _language_from_locale(locale) not in _supported_spellout_languages():
         raise DateNormalizationError(f"Unsupported Date Locale: {locale}")
+    if standalone_years_enabled and standalone_year_min > standalone_year_max:
+        raise DateNormalizationError(
+            "Minimum Standalone Year must not exceed Maximum Standalone Year"
+        )
 
     return DateNormalizer(
         enabled=True,
         locale=locale,
         renderer=renderer,
         input_formats=input_formats,
+        standalone_years_enabled=standalone_years_enabled,
+        standalone_year_min=standalone_year_min,
+        standalone_year_max=standalone_year_max,
     )
 
 
@@ -477,6 +570,23 @@ def _parse_input_formats(raw_value: Any, locale: str) -> tuple[str, ...]:
     return tuple(str(value) for value in raw_value)
 
 
+def _parse_standalone_year_boundary(
+    raw_value: Any,
+    default: int,
+    label: str,
+) -> int:
+    """Parse one Standalone Year Detection boundary."""
+    if raw_value in (None, ""):
+        return default
+    try:
+        boundary = int(raw_value)
+    except (TypeError, ValueError) as err:
+        raise DateNormalizationError(f"{label} must be a number") from err
+    if boundary < 0 or boundary > 9999:
+        raise DateNormalizationError(f"{label} must be between 0 and 9999")
+    return boundary
+
+
 def _validated_date(day: int, month: int, year: int | None = None) -> ParsedDate | None:
     """Return a validated date or None."""
     try:
@@ -492,6 +602,59 @@ def _has_date_boundaries(match: re.Match[str]) -> bool:
         match.string,
         match.end(),
     )
+
+
+def _is_standalone_year_match(
+    match: re.Match[str],
+    minimum: int,
+    maximum: int,
+) -> bool:
+    """Return if a four-digit candidate is safe to read as a year."""
+    year = int(match.group(0))
+    if year < minimum or year > maximum:
+        return False
+    if not _has_standalone_year_boundaries(match.string, match.start(), match.end()):
+        return False
+    if _has_standalone_year_skip_context(match.string, match.start()):
+        return False
+    return _STANDALONE_YEAR_UNIT_RE.match(match.string[match.end() :]) is None
+
+
+def _has_standalone_year_boundaries(text: str, start: int, end: int) -> bool:
+    """Return if neighboring characters are outside a standalone year token."""
+    if start > 0:
+        previous = text[start - 1]
+        if previous.isalnum() or previous == "_":
+            return False
+        if previous in ".,:/+-–—":
+            return False
+
+    if end >= len(text):
+        return True
+
+    next_char = text[end]
+    if next_char.isalnum() or next_char == "_":
+        return False
+    if next_char in ".,:/+-–—" and end + 1 < len(text) and text[end + 1].isdigit():
+        return False
+    return True
+
+
+def _has_standalone_year_skip_context(text: str, start: int) -> bool:
+    """Return if the previous words describe an identifier instead of a year."""
+    words = _previous_words(text, start, 2)
+    if not words:
+        return False
+    if words[-1] in _STANDALONE_YEAR_SKIP_WORDS:
+        return True
+    return len(words) >= 2 and tuple(words[-2:]) in _STANDALONE_YEAR_SKIP_WORD_PAIRS
+
+
+def _previous_words(text: str, end: int, limit: int) -> tuple[str, ...]:
+    """Return the previous words before an index."""
+    prefix = text[:end].rstrip()
+    words = re.findall(r"[A-Za-zÄÖÜäöüß]+", prefix[-80:])
+    return tuple(word.casefold() for word in words[-limit:])
 
 
 def _has_start_boundary(text: str, start: int) -> bool:
@@ -728,6 +891,17 @@ def _render_numeric_fallback_date(
     if parsed.year is not None:
         parts.append(converter(parsed.year, language, "year"))
     return " ".join(parts)
+
+
+def _render_standalone_year(
+    year: int,
+    language: str,
+    converter: DateNumberConverter,
+) -> str:
+    """Render a standalone year for the configured Date Locale."""
+    if language == "en":
+        return _english_year(year, converter)
+    return converter(year, language, "year")
 
 
 def _german_ordinal(

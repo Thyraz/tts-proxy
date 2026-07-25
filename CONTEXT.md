@@ -116,6 +116,10 @@ _Avoid_: natural-language date
 A date string that contains a day and month but no year, such as `14.05.` or `15. August`. The Date Normalizer speaks only the day and month for No-Year Dates and does not infer or append the current year.
 _Avoid_: incomplete date, implicit current-year date
 
+**Standalone Year Detection**:
+An optional Date Normalizer behavior that spells safe four-digit year tokens inside a configured minimum and maximum year range. It uses the Date Renderer year style, skips nearby units, identifier words, versions, IPs, and structured date fragments, and runs before the Number Normalizer.
+_Avoid_: big number spellout, broad year parser
+
 **Adjacent No-Year Date Text**:
 Two numeric No-Year Date candidates separated only by whitespace. This text is too ambiguous to normalize automatically; a visible separator or word between the candidates makes them separate dates.
 _Avoid_: date range, date list

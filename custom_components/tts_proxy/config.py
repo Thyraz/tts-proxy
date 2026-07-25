@@ -10,6 +10,9 @@ from .const import (
     CONF_DATE_LOCALE,
     CONF_DATE_NORMALIZER_ENABLED,
     CONF_DATE_RENDERER,
+    CONF_DATE_STANDALONE_YEAR_MAX,
+    CONF_DATE_STANDALONE_YEAR_MIN,
+    CONF_DATE_STANDALONE_YEARS_ENABLED,
     CONF_EMOJI_HANDLING,
     CONF_EMOJI_LANGUAGE,
     CONF_EMOJI_NORMALIZER_ENABLED,
@@ -165,6 +168,11 @@ def serializable_config(raw_config: dict[str, Any]) -> dict[str, Any]:
         CONF_DATE_LOCALE: config.date_normalizer.locale,
         CONF_DATE_RENDERER: config.date_normalizer.renderer,
         CONF_DATE_INPUT_FORMATS: list(config.date_normalizer.input_formats),
+        CONF_DATE_STANDALONE_YEARS_ENABLED: (
+            config.date_normalizer.standalone_years_enabled
+        ),
+        CONF_DATE_STANDALONE_YEAR_MIN: config.date_normalizer.standalone_year_min,
+        CONF_DATE_STANDALONE_YEAR_MAX: config.date_normalizer.standalone_year_max,
         CONF_NUMBER_NORMALIZER_ENABLED: config.number_normalizer.enabled,
         CONF_NUMBER_SPELLOUT_LANGUAGE: config.number_normalizer.language,
         CONF_SAFETY_TAIL_CHARS: config.safety_tail_chars,

@@ -66,7 +66,10 @@
               "date_normalizer_enabled": "Enable Date Normalizer",
               "date_locale": "Date Locale",
               "date_renderer": "Date Renderer",
-              "date_input_formats": "Date Input Formats"
+              "date_input_formats": "Date Input Formats",
+              "date_standalone_years_enabled": "Enable Standalone Year Detection",
+              "date_standalone_year_min": "Minimum Standalone Year",
+              "date_standalone_year_max": "Maximum Standalone Year"
             }
           },
           "numbers": {
@@ -91,7 +94,7 @@
       "unsupported_output_language": "The selected Target TTS Entity does not support this Output Language.",
       "invalid_rule": "One or more Replacement Rules are invalid.",
       "invalid_emoji_normalizer": "Select a supported Emoji Language when Spell out emoji is enabled.",
-      "invalid_date_normalizer": "Select a supported Date Locale, Date Renderer, and at least one Date Input Format.",
+      "invalid_date_normalizer": "Check Date Locale, Date Renderer, Date Input Formats, and Standalone Year range.",
       "invalid_number_normalizer": "Select a supported Number Spellout Language when the Number Normalizer is enabled.",
       "invalid_buffer_config": "Maximal Buffer Limit must be greater than Minimal Lookahead Buffer Length."
     }
@@ -162,7 +165,10 @@
               "date_normalizer_enabled": "Enable Date Normalizer",
               "date_locale": "Date Locale",
               "date_renderer": "Date Renderer",
-              "date_input_formats": "Date Input Formats"
+              "date_input_formats": "Date Input Formats",
+              "date_standalone_years_enabled": "Enable Standalone Year Detection",
+              "date_standalone_year_min": "Minimum Standalone Year",
+              "date_standalone_year_max": "Maximum Standalone Year"
             }
           },
           "numbers": {
@@ -187,7 +193,7 @@
       "unsupported_output_language": "The selected Target TTS Entity does not support this Output Language.",
       "invalid_rule": "One or more Replacement Rules are invalid.",
       "invalid_emoji_normalizer": "Select a supported Emoji Language when Spell out emoji is enabled.",
-      "invalid_date_normalizer": "Select a supported Date Locale, Date Renderer, and at least one Date Input Format.",
+      "invalid_date_normalizer": "Check Date Locale, Date Renderer, Date Input Formats, and Standalone Year range.",
       "invalid_number_normalizer": "Select a supported Number Spellout Language when the Number Normalizer is enabled.",
       "invalid_buffer_config": "Maximal Buffer Limit must be greater than Minimal Lookahead Buffer Length."
     }

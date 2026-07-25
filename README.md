@@ -14,6 +14,11 @@ It can apply replacements based on:
 
 This happens before the target TTS service receives the text.
 
+Date detection can also spell standalone years within a configured range.
+Some sanity checks are done, to identify numbers that are clearly no years (like 1920 Watts).
+
+German date output also uses a few simple context rules for endings like `dreizehnte` vs `dreizehnter`.
+
 TTS Proxy supports streaming and non-streaming TTS integrations.
 
 ## Install with HACS

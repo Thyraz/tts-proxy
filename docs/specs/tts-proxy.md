@@ -117,6 +117,7 @@ For one-shot TTS, the proxy processes the full message and calls the Target TTS 
 - Emoji spellout replaces emoji with localized names, falls back to English per emoji when a localized name is missing, leaves unknown emoji unchanged, and separates spoken names from surrounding text with commas.
 - The Number Normalizer spells simple leading-zero integers digit by digit, while one-separator decimals are normalized by removing leading integer zeroes and trailing fractional zeroes before spellout.
 - The German Date Renderer uses deterministic immediate left-context rules for clear article and preposition patterns, but does not use a general NLP parser.
+- Standalone Year Detection is an explicit Date Normalizer option with a configurable minimum and maximum year.
 - Sloppy spaced numeric date formats such as `DD. MM. YYYY` are separate Date Input Formats. The German default enables the full-year spaced form, but not the no-year spaced form.
 - Numeric No-Year Date candidates separated only by whitespace are left unchanged; a visible separator or word between candidates allows normalization.
 - Locale-specific unit grammar remains user-defined through Replacement Rules.
