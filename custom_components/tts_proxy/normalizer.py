@@ -43,11 +43,12 @@ from .text_cleanup_normalizer import (
 from .unit_normalizer import UnitNormalizer, parse_unit_normalizer
 
 _CONTROL_TAG_RE = re.compile(r"(<[^>]*>|\[[^\]]*\])")
-_NUMERIC_TEXT_RE = re.compile(r"-?\d+(?:[.,]\d+)?")
+_NEGATIVE_SIGN_CHARS = "-\u2212\u2013\u2014"
+_NUMERIC_TEXT_RE = re.compile(rf"[{_NEGATIVE_SIGN_CHARS}]?\d+(?:[.,]\d+)?")
 _SENTENCE_PUNCTUATION = ".!?:;"
 _CLOSING_PUNCTUATION = "\"')]}"
-_STRUCTURAL_PREFIX_CHARS = ".,:/+-"
-_STRUCTURAL_SUFFIX_CHARS = ":/+-"
+_STRUCTURAL_PREFIX_CHARS = f".,:/+{_NEGATIVE_SIGN_CHARS}"
+_STRUCTURAL_SUFFIX_CHARS = f":/+{_NEGATIVE_SIGN_CHARS}"
 _MAX_INTEGER_DIGITS = 9
 _MAX_FRACTION_DIGITS = 6
 
@@ -182,7 +183,7 @@ class NumberNormalizer:
                     digit_sequence,
                     self.language,
                     self._number_converter,
-                    negative=number_text.startswith("-"),
+                    negative=_has_negative_sign(number_text),
                 )
             except (
                 ArithmeticError,
@@ -432,14 +433,15 @@ def _apply_builtin_normalizers(
 
 def _number_value(number_text: str) -> int | str | None:
     """Return a converter value for eligible numeric text."""
-    negative = number_text.startswith("-")
-    unsigned = number_text[1:] if negative else number_text
+    negative = _has_negative_sign(number_text)
+    unsigned = _unsigned_number_text(number_text)
     separator = _decimal_separator(unsigned)
 
     if separator is None:
         if not _integer_part_is_eligible(unsigned):
             return None
-        return int(number_text)
+        value = int(unsigned)
+        return -value if negative and value else value
 
     integer_part, fraction_part = unsigned.split(separator, 1)
     if not _integer_part_length_is_eligible(integer_part):
@@ -488,7 +490,7 @@ def _integer_part_length_is_eligible(integer_part: str) -> bool:
 
 def _leading_zero_integer_digits(number_text: str) -> tuple[int, ...] | None:
     """Return digits for a simple leading-zero integer token."""
-    unsigned = number_text[1:] if number_text.startswith("-") else number_text
+    unsigned = _unsigned_number_text(number_text)
     if _decimal_separator(unsigned) is not None:
         return None
     if not _integer_part_length_is_eligible(unsigned):
@@ -496,6 +498,16 @@ def _leading_zero_integer_digits(number_text: str) -> tuple[int, ...] | None:
     if len(unsigned) <= 1 or not unsigned.startswith("0"):
         return None
     return tuple(int(char) for char in unsigned)
+
+
+def _has_negative_sign(number_text: str) -> bool:
+    """Return if numeric text starts with a supported negative sign."""
+    return bool(number_text) and number_text[0] in _NEGATIVE_SIGN_CHARS
+
+
+def _unsigned_number_text(number_text: str) -> str:
+    """Return numeric text without a supported leading negative sign."""
+    return number_text[1:] if _has_negative_sign(number_text) else number_text
 
 
 def _spellout_digit_sequence(

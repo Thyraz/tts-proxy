@@ -14,6 +14,7 @@ from .const import (
     CONF_UNIT_NORMALIZER_ENABLED,
 )
 
+_NEGATIVE_SIGN_CHARS = "-\u2212\u2013\u2014"
 _CURATED_UNIT_LOCALES = (
     "de",
     "de-AT",
@@ -117,8 +118,8 @@ _UNIT_PATTERN = "|".join(
     for alias in sorted(_UNIT_ALIASES, key=lambda alias: len(alias.text), reverse=True)
 )
 _UNIT_RE = re.compile(
-    r"(?<![\w.,:/+\-–—])"
-    r"(?P<number>-?\d+(?:[.,]\d+)?)"
+    rf"(?<![\w.,:/+{_NEGATIVE_SIGN_CHARS}])"
+    rf"(?P<number>[{_NEGATIVE_SIGN_CHARS}]?\d+(?:[.,]\d+)?)"
     r"\s*"
     rf"(?P<unit>{_UNIT_PATTERN})"
     r"(?![\w/])"
@@ -289,14 +290,14 @@ def _normal_temperature_scale(locale: str) -> str:
 def _is_singular(number_text: str) -> bool:
     """Return if the numeric text has singular unit value."""
     try:
-        return abs(Decimal(number_text.replace(",", "."))) == Decimal(1)
+        return abs(Decimal(_ascii_signed_number_text(number_text))) == Decimal(1)
     except InvalidOperation:
         return False
 
 
 def _looks_like_grouped_number(number_text: str) -> bool:
     """Return if one-separator numeric text looks like grouped thousands."""
-    unsigned = number_text[1:] if number_text.startswith("-") else number_text
+    unsigned = _unsigned_number_text(number_text)
     separator = _decimal_separator(unsigned)
     if separator is None:
         return False
@@ -318,6 +319,23 @@ def _decimal_separator(unsigned_number_text: str) -> str | None:
     if "," in unsigned_number_text:
         return ","
     return None
+
+
+def _ascii_signed_number_text(number_text: str) -> str:
+    """Return numeric text with a normalized ASCII negative sign."""
+    if _has_negative_sign(number_text):
+        return f"-{number_text[1:].replace(',', '.')}"
+    return number_text.replace(",", ".")
+
+
+def _has_negative_sign(number_text: str) -> bool:
+    """Return if numeric text starts with a supported negative sign."""
+    return bool(number_text) and number_text[0] in _NEGATIVE_SIGN_CHARS
+
+
+def _unsigned_number_text(number_text: str) -> str:
+    """Return numeric text without a supported leading negative sign."""
+    return number_text[1:] if _has_negative_sign(number_text) else number_text
 
 
 def _language_from_locale(locale: str) -> str:

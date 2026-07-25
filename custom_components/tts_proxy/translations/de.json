@@ -1,0 +1,229 @@
+{
+  "title": "TTS Proxy",
+  "config": {
+    "step": {
+      "user": {
+        "title": "TTS Proxy erstellen",
+        "description": "Wähle die Ziel-TTS-Entität, die den verarbeiteten Text erhalten soll.",
+        "data": {
+          "name": "Name",
+          "target_tts_entity": "Ziel-TTS-Entität"
+        }
+      },
+      "details": {
+        "title": "TTS Proxy konfigurieren",
+        "data": {
+          "preview_text": "Vorschau-Eingabe"
+        },
+        "data_description": {
+          "preview_text": "Gib Beispieltext ein, um den verarbeiteten Text zu prüfen, der an die Ziel-TTS-Entität gesendet würde."
+        },
+        "sections": {
+          "general": {
+            "name": "Allgemein",
+            "data": {
+              "output_language": "Ausgabesprache"
+            }
+          },
+          "replacements": {
+            "name": "Ersetzungsregeln",
+            "data": {
+              "replacement_rules": " "
+            }
+          },
+          "markdown": {
+            "name": "Markdown-Bereinigung",
+            "data": {
+              "markdown_cleanup_enabled": "Markdown-Bereinigung aktivieren",
+              "markdown_strip_emphasis": "Hervorhebungszeichen entfernen",
+              "markdown_strip_headings": "Überschriftenzeichen entfernen",
+              "markdown_strip_list_markers": "Listenzeichen entfernen",
+              "markdown_strip_tables": "Tabellenformatierung entfernen",
+              "markdown_strip_links": "Markdown-Links auf Linktext reduzieren",
+              "markdown_remove_plain_urls": "Reine URLs entfernen",
+              "markdown_strip_inline_code": "Inline-Code-Backticks entfernen",
+              "markdown_remove_code_blocks": "Codeblöcke entfernen",
+              "markdown_strip_blockquotes": "Zitatzeichen entfernen",
+              "markdown_remove_divider_lines": "Trennlinien entfernen",
+              "markdown_strip_strikethrough": "Durchstreichungszeichen entfernen",
+              "markdown_strip_images": "Bildsyntax auf Alternativtext reduzieren"
+            },
+            "data_description": {
+              "markdown_cleanup_enabled": "Die Unterregeln darunter werden nur angewendet, wenn dieser globale Schalter aktiviert ist."
+            }
+          },
+          "text_cleanup": {
+            "name": "Textbereinigung",
+            "data": {
+              "text_cleanup_replace_line_breaks": "Zeilenumbrüche durch Leerzeichen ersetzen"
+            }
+          },
+          "emoji": {
+            "name": "Emoji-Normalisierung",
+            "data": {
+              "emoji_normalizer_enabled": "Emoji-Normalisierung aktivieren",
+              "emoji_handling": "Emoji-Behandlung",
+              "emoji_language": "Emoji-Sprache"
+            }
+          },
+          "dates": {
+            "name": "Datumsnormalisierung",
+            "data": {
+              "date_normalizer_enabled": "Datumsnormalisierung aktivieren",
+              "date_locale": "Datums-Locale",
+              "date_renderer": "Datums-Renderer",
+              "date_input_formats": "Datumsformate",
+              "date_standalone_years_enabled": "Einzelne Jahreszahlen erkennen",
+              "date_standalone_year_min": "Kleinste einzelne Jahreszahl",
+              "date_standalone_year_max": "Größte einzelne Jahreszahl"
+            }
+          },
+          "units": {
+            "name": "Einheiten-Normalisierung",
+            "data": {
+              "unit_normalizer_enabled": "Einheiten-Normalisierung aktivieren",
+              "unit_locale": "Einheiten-Locale"
+            }
+          },
+          "numbers": {
+            "name": "Zahlennormalisierung",
+            "data": {
+              "number_normalizer_enabled": "Zahlennormalisierung aktivieren",
+              "number_spellout_language": "Sprache für ausgeschriebene Zahlen"
+            }
+          },
+          "streaming": {
+            "name": "Einstellungen für TTS-Streaming",
+            "data": {
+              "safety_tail_chars": "Minimale Lookahead-Pufferlänge",
+              "max_buffer_chars": "Maximales Pufferlimit"
+            }
+          }
+        }
+      }
+    },
+    "error": {
+      "invalid_target_tts_entity": "Wähle eine TTS-Entität, die kein Proxy ist.",
+      "unsupported_output_language": "Die gewählte Ziel-TTS-Entität unterstützt diese Ausgabesprache nicht.",
+      "invalid_rule": "Eine oder mehrere Ersetzungsregeln sind ungültig.",
+      "invalid_emoji_normalizer": "Wähle eine unterstützte Emoji-Sprache, wenn Emoji ausgeschrieben werden sollen.",
+      "invalid_date_normalizer": "Prüfe Datums-Locale, Datums-Renderer, Datumsformate und Bereich für einzelne Jahreszahlen.",
+      "invalid_unit_normalizer": "Wähle eine Einheiten-Locale, wenn die Einheiten-Normalisierung aktiviert ist.",
+      "invalid_number_normalizer": "Wähle eine unterstützte Sprache für ausgeschriebene Zahlen, wenn die Zahlennormalisierung aktiviert ist.",
+      "invalid_buffer_config": "Das maximale Pufferlimit muss größer als die minimale Lookahead-Pufferlänge sein."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "TTS Proxy konfigurieren",
+        "description": "Wähle die Ziel-TTS-Entität, die den verarbeiteten Text erhalten soll.",
+        "data": {
+          "name": "Name",
+          "target_tts_entity": "Ziel-TTS-Entität"
+        }
+      },
+      "details": {
+        "title": "TTS Proxy Details konfigurieren",
+        "data": {
+          "preview_text": "Vorschau-Eingabe"
+        },
+        "data_description": {
+          "preview_text": "Gib Beispieltext ein, um den verarbeiteten Text zu prüfen, der an die Ziel-TTS-Entität gesendet würde."
+        },
+        "sections": {
+          "general": {
+            "name": "Allgemein",
+            "data": {
+              "output_language": "Ausgabesprache"
+            }
+          },
+          "replacements": {
+            "name": "Ersetzungsregeln",
+            "data": {
+              "replacement_rules": " "
+            }
+          },
+          "markdown": {
+            "name": "Markdown-Bereinigung",
+            "data": {
+              "markdown_cleanup_enabled": "Markdown-Bereinigung aktivieren",
+              "markdown_strip_emphasis": "Hervorhebungszeichen entfernen",
+              "markdown_strip_headings": "Überschriftenzeichen entfernen",
+              "markdown_strip_list_markers": "Listenzeichen entfernen",
+              "markdown_strip_tables": "Tabellenformatierung entfernen",
+              "markdown_strip_links": "Markdown-Links auf Linktext reduzieren",
+              "markdown_remove_plain_urls": "Reine URLs entfernen",
+              "markdown_strip_inline_code": "Inline-Code-Backticks entfernen",
+              "markdown_remove_code_blocks": "Codeblöcke entfernen",
+              "markdown_strip_blockquotes": "Zitatzeichen entfernen",
+              "markdown_remove_divider_lines": "Trennlinien entfernen",
+              "markdown_strip_strikethrough": "Durchstreichungszeichen entfernen",
+              "markdown_strip_images": "Bildsyntax auf Alternativtext reduzieren"
+            },
+            "data_description": {
+              "markdown_cleanup_enabled": "Die Unterregeln darunter werden nur angewendet, wenn dieser globale Schalter aktiviert ist."
+            }
+          },
+          "text_cleanup": {
+            "name": "Textbereinigung",
+            "data": {
+              "text_cleanup_replace_line_breaks": "Zeilenumbrüche durch Leerzeichen ersetzen"
+            }
+          },
+          "emoji": {
+            "name": "Emoji-Normalisierung",
+            "data": {
+              "emoji_normalizer_enabled": "Emoji-Normalisierung aktivieren",
+              "emoji_handling": "Emoji-Behandlung",
+              "emoji_language": "Emoji-Sprache"
+            }
+          },
+          "dates": {
+            "name": "Datumsnormalisierung",
+            "data": {
+              "date_normalizer_enabled": "Datumsnormalisierung aktivieren",
+              "date_locale": "Datums-Locale",
+              "date_renderer": "Datums-Renderer",
+              "date_input_formats": "Datumsformate",
+              "date_standalone_years_enabled": "Einzelne Jahreszahlen erkennen",
+              "date_standalone_year_min": "Kleinste einzelne Jahreszahl",
+              "date_standalone_year_max": "Größte einzelne Jahreszahl"
+            }
+          },
+          "units": {
+            "name": "Einheiten-Normalisierung",
+            "data": {
+              "unit_normalizer_enabled": "Einheiten-Normalisierung aktivieren",
+              "unit_locale": "Einheiten-Locale"
+            }
+          },
+          "numbers": {
+            "name": "Zahlennormalisierung",
+            "data": {
+              "number_normalizer_enabled": "Zahlennormalisierung aktivieren",
+              "number_spellout_language": "Sprache für ausgeschriebene Zahlen"
+            }
+          },
+          "streaming": {
+            "name": "Einstellungen für TTS-Streaming",
+            "data": {
+              "safety_tail_chars": "Minimale Lookahead-Pufferlänge",
+              "max_buffer_chars": "Maximales Pufferlimit"
+            }
+          }
+        }
+      }
+    },
+    "error": {
+      "invalid_target_tts_entity": "Wähle eine TTS-Entität, die kein Proxy ist.",
+      "unsupported_output_language": "Die gewählte Ziel-TTS-Entität unterstützt diese Ausgabesprache nicht.",
+      "invalid_rule": "Eine oder mehrere Ersetzungsregeln sind ungültig.",
+      "invalid_emoji_normalizer": "Wähle eine unterstützte Emoji-Sprache, wenn Emoji ausgeschrieben werden sollen.",
+      "invalid_date_normalizer": "Prüfe Datums-Locale, Datums-Renderer, Datumsformate und Bereich für einzelne Jahreszahlen.",
+      "invalid_unit_normalizer": "Wähle eine Einheiten-Locale, wenn die Einheiten-Normalisierung aktiviert ist.",
+      "invalid_number_normalizer": "Wähle eine unterstützte Sprache für ausgeschriebene Zahlen, wenn die Zahlennormalisierung aktiviert ist.",
+      "invalid_buffer_config": "Das maximale Pufferlimit muss größer als die minimale Lookahead-Pufferlänge sein."
+    }
+  }
+}

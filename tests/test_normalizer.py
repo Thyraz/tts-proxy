@@ -120,6 +120,7 @@ def _fake_german_number(value: int | str, language: str) -> str:
 
     return {
         -1: "minus eins",
+        -6: "minus sechs",
         -5: "minus fünf",
         0: "null",
         1: "eins",
@@ -140,6 +141,7 @@ def _fake_german_number(value: int | str, language: str) -> str:
         2026: "zweitausendsechsundzwanzig",
         "0.5": "null Komma fünf",
         "0.7": "null Komma sieben",
+        "0.9": "null Komma neun",
         "53.4": "dreiundfünfzig Komma vier",
         "7.7": "sieben Komma sieben",
         "7.1234": "sieben Komma eins zwei drei vier",
@@ -832,6 +834,16 @@ class NumberNormalizerTests(unittest.TestCase):
             "Wert einhundertdreiundzwanzig und minus fünf.",
         )
 
+    def test_spells_numbers_with_unicode_minus_signs(self) -> None:
+        self.assertEqual(
+            normalize_text(
+                "Werte –6, −5 und —1.",
+                [],
+                _german_number_normalizer(),
+            ),
+            "Werte minus sechs, minus fünf und minus eins.",
+        )
+
     def test_spells_one_separator_decimals_with_point_or_comma(self) -> None:
         self.assertEqual(
             normalize_text("Temp 53.4 und 53,4.", [], _german_number_normalizer()),
@@ -1015,6 +1027,25 @@ class UnitNormalizerTests(unittest.TestCase):
         self.assertEqual(
             normalizer.normalize("Temp 25°C und -5°F, Wolken 92%."),
             "Temp 25 Grad und -5 Grad Fahrenheit, Wolken 92 Prozent.",
+        )
+
+    def test_units_support_unicode_minus_signs(self) -> None:
+        normalizer = _unit_normalizer(locale="de-DE")
+
+        self.assertEqual(
+            normalizer.normalize("(–6 W), (−1 kWh), (—2°F)"),
+            "(–6 Watt), (−1 Kilowattstunde), (—2 Grad Fahrenheit)",
+        )
+
+    def test_unicode_minus_units_run_before_number_normalizer(self) -> None:
+        self.assertEqual(
+            normalize_text(
+                "(–6 W), (0,9 kWh)",
+                [],
+                _german_number_normalizer(),
+                unit_normalizer=_unit_normalizer(locale="de-DE"),
+            ),
+            "(minus sechs Watt), (null Komma neun Kilowattstunden)",
         )
 
     def test_german_power_and_energy_units_with_common_aliases(self) -> None:
