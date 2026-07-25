@@ -127,11 +127,13 @@ For one-shot TTS, the proxy processes the full message and calls the Target TTS 
 - Unit Normalizer is disabled by default. When enabled, it uses a configured Unit Locale, defaults that locale from Output Language, and replaces only supported unit symbols or technical abbreviations after eligible numbers.
 - German and English Unit Normalizer output is curated. Other Unit Locales use a conservative fallback.
 - Unit Normalizer supports common smart-home units for temperature, percent, power, energy, voltage, current, distance, speed, pressure, light, and data. It includes `kmh` as an alias for `km/h` and intentionally excludes bare `m`.
+- If Grouped Number Detection is enabled, Unit Normalizer can detect valid grouped numbers before units, such as `20 222,2 kWh`.
 - Time Normalizer is disabled by default. When enabled, it uses a configured Time Locale and supports curated German and English clock-time rendering.
 - Time Range Detection and Clock Time Detection are enabled by default inside the Time Normalizer. Duration Detection is opt-in because two-part colon text is ambiguous without an `h` marker.
 - Time Normalizer detects `H:MM` and `HH:MM` clock times, locale-specific markers such as `Uhr` or `am`/`pm`, clock-time ranges, and opt-in durations such as `1:30h` or `01:30:00`.
 - The Time Normalizer deliberately skips structured tokens such as IPs, identifiers, ratios, clock times with seconds, and invalid clock values.
 - The Number Normalizer spells simple leading-zero integers digit by digit, while one-separator decimals are normalized by removing leading integer zeroes and trailing fractional zeroes before spellout.
+- Grouped Number Detection is optional and disabled by default. When enabled, valid thousands-grouped values are parsed as one numeric token, using Number Spellout Language, Unit Locale, or Output Language as hints for ambiguous `1.342`/`1,342` style values. IPv4 addresses are left unchanged.
 - The German Date Renderer uses deterministic immediate left-context rules for clear article and preposition patterns, but does not use a general NLP parser.
 - Standalone Year Detection is an explicit Date Normalizer option with a configurable minimum and maximum year.
 - Sloppy spaced numeric date formats such as `DD. MM. YYYY` are separate Date Input Formats. The German default enables the full-year spaced form, but not the no-year spaced form.

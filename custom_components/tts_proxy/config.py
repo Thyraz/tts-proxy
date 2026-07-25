@@ -31,6 +31,7 @@ from .const import (
     CONF_MARKDOWN_STRIP_STRIKETHROUGH,
     CONF_MARKDOWN_STRIP_TABLES,
     CONF_MAX_BUFFER_CHARS,
+    CONF_NUMBER_ALLOW_GROUPED_NUMBERS,
     CONF_NUMBER_NORMALIZER_ENABLED,
     CONF_NUMBER_SPELLOUT_LANGUAGE,
     CONF_OUTPUT_LANGUAGE,
@@ -203,6 +204,9 @@ def serializable_config(raw_config: dict[str, Any]) -> dict[str, Any]:
         CONF_TIME_DURATIONS_ENABLED: config.time_normalizer.durations_enabled,
         CONF_UNIT_NORMALIZER_ENABLED: config.unit_normalizer.enabled,
         CONF_UNIT_LOCALE: config.unit_normalizer.locale,
+        CONF_NUMBER_ALLOW_GROUPED_NUMBERS: (
+            config.number_normalizer.allow_grouped_numbers
+        ),
         CONF_NUMBER_NORMALIZER_ENABLED: config.number_normalizer.enabled,
         CONF_NUMBER_SPELLOUT_LANGUAGE: config.number_normalizer.language,
         CONF_SAFETY_TAIL_CHARS: config.safety_tail_chars,

@@ -30,6 +30,7 @@ from custom_components.tts_proxy.const import (
     CONF_MARKDOWN_STRIP_LINKS,
     CONF_MARKDOWN_STRIP_TABLES,
     CONF_MAX_BUFFER_CHARS,
+    CONF_NUMBER_ALLOW_GROUPED_NUMBERS,
     CONF_NUMBER_NORMALIZER_ENABLED,
     CONF_NUMBER_SPELLOUT_LANGUAGE,
     CONF_OUTPUT_LANGUAGE,
@@ -151,11 +152,13 @@ def _fake_german_number(value: int | str, language: str) -> str:
         30: "dreißig",
         53: "dreiundfünfzig",
         123: "einhundertdreiundzwanzig",
+        1342: "eintausenddreihundertzweiundvierzig",
         2026: "zweitausendsechsundzwanzig",
         "0.5": "null Komma fünf",
         "0.7": "null Komma sieben",
         "0.9": "null Komma neun",
         "53.4": "dreiundfünfzig Komma vier",
+        "20222.2": "zwanzigtausendzweihundertzweiundzwanzig Komma zwei",
         "7.7": "sieben Komma sieben",
         "7.1234": "sieben Komma eins zwei drei vier",
     }[value]
@@ -249,12 +252,18 @@ class _FakeEmojiModule:
         return text.replace("😄", replace("😄", data))
 
 
-def _german_number_normalizer() -> NumberNormalizer:
+def _german_number_normalizer(
+    *,
+    allow_grouped_numbers: bool = False,
+    locale_hint: str = "de",
+) -> NumberNormalizer:
     """Return an enabled fake German Number Normalizer."""
     return NumberNormalizer(
         enabled=True,
         language="de",
         converter=_fake_german_number,
+        allow_grouped_numbers=allow_grouped_numbers,
+        locale_hint=locale_hint,
     )
 
 
@@ -310,9 +319,19 @@ def _date_normalizer(
     )
 
 
-def _unit_normalizer(*, locale: str = "de-DE") -> UnitNormalizer:
+def _unit_normalizer(
+    *,
+    locale: str = "de-DE",
+    allow_grouped_numbers: bool = False,
+    number_locale_hint: str = "",
+) -> UnitNormalizer:
     """Return an enabled Unit Normalizer."""
-    return UnitNormalizer(enabled=True, locale=locale)
+    return UnitNormalizer(
+        enabled=True,
+        locale=locale,
+        allow_grouped_numbers=allow_grouped_numbers,
+        number_locale_hint=number_locale_hint,
+    )
 
 
 def _time_normalizer(
@@ -928,6 +947,96 @@ class NumberNormalizerTests(unittest.TestCase):
             ),
         )
 
+    def test_spells_grouped_numbers_when_enabled(self) -> None:
+        def show_value(value: int | str, language: str) -> str:
+            return f"{language}:{value}"
+
+        normalizer = NumberNormalizer(
+            enabled=True,
+            language="de",
+            converter=show_value,
+            allow_grouped_numbers=True,
+            locale_hint="de",
+        )
+
+        self.assertEqual(
+            normalize_text(
+                "Werte 20\u202f222,2, 20.222,2, 20,222.2 und 1 234.",
+                [],
+                normalizer,
+            ),
+            "Werte de:20222.2, de:20222.2, de:20222.2 und de:1234.",
+        )
+
+    def test_ambiguous_grouped_numbers_use_locale_hint(self) -> None:
+        def show_value(value: int | str, language: str) -> str:
+            return f"{language}:{value}"
+
+        german = NumberNormalizer(
+            enabled=True,
+            language="de",
+            converter=show_value,
+            allow_grouped_numbers=True,
+            locale_hint="de",
+        )
+        english = NumberNormalizer(
+            enabled=True,
+            language="en",
+            converter=show_value,
+            allow_grouped_numbers=True,
+            locale_hint="en",
+        )
+
+        self.assertEqual(
+            normalize_text("Werte 1.342 und 1,342.", [], german),
+            "Werte de:1342 und de:1.342.",
+        )
+        self.assertEqual(
+            normalize_text("Values 1.342 and 1,342.", [], english),
+            "Values en:1.342 and en:1342.",
+        )
+
+    def test_invalid_grouped_numbers_and_ipv4_are_not_partially_spelled(self) -> None:
+        def show_value(value: int | str, language: str) -> str:
+            return f"<{value}>"
+
+        normalizer = NumberNormalizer(
+            enabled=True,
+            language="de",
+            converter=show_value,
+            allow_grouped_numbers=True,
+            locale_hint="de",
+        )
+        text = (
+            "IP 192.168.1.1, Version 1.2.3, "
+            "Mixed 1 234\u202f567 und Decimal 0.001."
+        )
+
+        self.assertEqual(
+            normalize_text(text, [], normalizer),
+            (
+                "IP 192.168.1.1, Version 1.2.3, "
+                "Mixed 1 234\u202f567 und Decimal <0.001>."
+            ),
+        )
+
+    def test_adjacent_plain_numbers_stay_separate_with_grouping_enabled(self) -> None:
+        def show_value(value: int | str, language: str) -> str:
+            return f"<{value}>"
+
+        normalizer = NumberNormalizer(
+            enabled=True,
+            language="de",
+            converter=show_value,
+            allow_grouped_numbers=True,
+            locale_hint="de",
+        )
+
+        self.assertEqual(
+            normalize_text("Werte 12 34 und 2026 13.", [], normalizer),
+            "Werte <12> <34> und <2026> <13>.",
+        )
+
     def test_leading_zero_integers_are_spoken_as_digit_sequences(self) -> None:
         self.assertEqual(
             normalize_text("Codes 007, 000123 und -09.", [], _german_number_normalizer()),
@@ -1189,6 +1298,23 @@ class UnitNormalizerTests(unittest.TestCase):
             "Leistung 1.000W, 1,000kWh und 0.001 Watt.",
         )
 
+    def test_unit_detection_uses_grouped_number_setting(self) -> None:
+        normalizer = _unit_normalizer(
+            locale="de-DE",
+            allow_grouped_numbers=True,
+            number_locale_hint="de",
+        )
+
+        self.assertEqual(
+            normalizer.normalize(
+                "Energie 20\u202f222,2\u202fkWh, 1.342kWh und 1,000kWh."
+            ),
+            (
+                "Energie 20\u202f222,2 Kilowattstunden, "
+                "1.342 Kilowattstunden und 1,000 Kilowattstunde."
+            ),
+        )
+
     def test_unit_normalizer_keeps_leading_zero_number_text(self) -> None:
         normalizer = _unit_normalizer(locale="de-DE")
 
@@ -1267,6 +1393,38 @@ class UnitNormalizerTests(unittest.TestCase):
             self.assertEqual(
                 normalize_text_from_raw_config("Temp 30°C.", raw_config),
                 "Temp dreißig Grad.",
+            )
+
+    def test_normalizes_grouped_number_units_from_unsaved_config(self) -> None:
+        raw_config = {
+            SECTION_UNITS: {
+                CONF_UNIT_NORMALIZER_ENABLED: True,
+                CONF_UNIT_LOCALE: "de-DE",
+            },
+            SECTION_NUMBERS: {
+                CONF_NUMBER_NORMALIZER_ENABLED: True,
+                CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
+                CONF_NUMBER_ALLOW_GROUPED_NUMBERS: True,
+            },
+        }
+
+        with (
+            patch(
+                "custom_components.tts_proxy.normalizer.supported_number_spellout_languages",
+                return_value=("de",),
+            ),
+            patch(
+                "custom_components.tts_proxy.normalizer._spellout_number",
+                side_effect=_fake_german_number,
+            ),
+        ):
+            self.assertEqual(
+                normalize_text_from_raw_config("Hausverbrauch 20\u202f222,2\u202fkWh.", raw_config),
+                (
+                    "Hausverbrauch "
+                    "zwanzigtausendzweihundertzweiundzwanzig Komma zwei "
+                    "Kilowattstunden."
+                ),
             )
 
 
@@ -1978,6 +2136,25 @@ class StreamingNormalizerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual("".join(output), "Temp dreißig Grad.")
 
+    async def test_stream_grouped_number_unit_can_span_chunks(self) -> None:
+        output = await _collect_stream(
+            ["Haus 20", "\u202f222,2", "\u202fkWh."],
+            [],
+            _german_number_normalizer(allow_grouped_numbers=True),
+            unit_normalizer=_unit_normalizer(
+                locale="de-DE",
+                allow_grouped_numbers=True,
+                number_locale_hint="de",
+            ),
+            safety_tail_chars=64,
+            max_buffer_chars=500,
+        )
+
+        self.assertEqual(
+            "".join(output),
+            "Haus zwanzigtausendzweihundertzweiundzwanzig Komma zwei Kilowattstunden.",
+        )
+
     async def test_stream_time_normalizer_can_span_chunks(self) -> None:
         output = await _collect_stream(
             ["Start 1", "3:4", "0 Uhr."],
@@ -2096,6 +2273,7 @@ class ConfigTests(unittest.TestCase):
                     CONF_UNIT_LOCALE: "de-DE",
                     CONF_NUMBER_NORMALIZER_ENABLED: False,
                     CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
+                    CONF_NUMBER_ALLOW_GROUPED_NUMBERS: True,
                     CONF_SAFETY_TAIL_CHARS: 64,
                     CONF_MAX_BUFFER_CHARS: 500,
                 }
@@ -2117,8 +2295,10 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(config.time_normalizer.durations_enabled)
         self.assertTrue(config.unit_normalizer.enabled)
         self.assertEqual(config.unit_normalizer.locale, "de-DE")
+        self.assertTrue(config.unit_normalizer.allow_grouped_numbers)
         self.assertFalse(config.number_normalizer.enabled)
         self.assertEqual(config.number_normalizer.language, "de")
+        self.assertTrue(config.number_normalizer.allow_grouped_numbers)
         self.assertEqual(config.safety_tail_chars, 64)
         self.assertEqual(config.max_buffer_chars, 500)
 
@@ -2202,6 +2382,7 @@ class ConfigTests(unittest.TestCase):
                     SECTION_NUMBERS: {
                         CONF_NUMBER_NORMALIZER_ENABLED: False,
                         CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
+                        CONF_NUMBER_ALLOW_GROUPED_NUMBERS: True,
                     },
                 }
             )
@@ -2224,6 +2405,7 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(config[CONF_TIME_DURATIONS_ENABLED])
         self.assertTrue(config[CONF_UNIT_NORMALIZER_ENABLED])
         self.assertEqual(config[CONF_UNIT_LOCALE], "en-US")
+        self.assertTrue(config[CONF_NUMBER_ALLOW_GROUPED_NUMBERS])
         self.assertNotIn(SECTION_GENERAL, config)
         self.assertNotIn(SECTION_MARKDOWN, config)
         self.assertNotIn(SECTION_TEXT_CLEANUP, config)

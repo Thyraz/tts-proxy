@@ -102,6 +102,7 @@
             "name": "Zahlennormalisierung",
             "data": {
               "number_normalizer_enabled": "Zahlennormalisierung aktivieren",
+              "number_allow_grouped_numbers": "Gruppierte Zahlen erlauben",
               "number_spellout_language": "Sprache für ausgeschriebene Zahlen"
             }
           },
@@ -229,6 +230,7 @@
             "name": "Zahlennormalisierung",
             "data": {
               "number_normalizer_enabled": "Zahlennormalisierung aktivieren",
+              "number_allow_grouped_numbers": "Gruppierte Zahlen erlauben",
               "number_spellout_language": "Sprache für ausgeschriebene Zahlen"
             }
           },

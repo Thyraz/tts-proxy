@@ -102,6 +102,7 @@
             "name": "Number Normalizer",
             "data": {
               "number_normalizer_enabled": "Enable Number Normalizer",
+              "number_allow_grouped_numbers": "Allow Grouped Numbers",
               "number_spellout_language": "Number Spellout Language"
             }
           },
@@ -229,6 +230,7 @@
             "name": "Number Normalizer",
             "data": {
               "number_normalizer_enabled": "Enable Number Normalizer",
+              "number_allow_grouped_numbers": "Allow Grouped Numbers",
               "number_spellout_language": "Number Spellout Language"
             }
           },

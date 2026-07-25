@@ -9,12 +9,20 @@ import re
 from typing import Any
 
 from .const import (
+    CONF_NUMBER_ALLOW_GROUPED_NUMBERS,
+    CONF_NUMBER_SPELLOUT_LANGUAGE,
     CONF_OUTPUT_LANGUAGE,
     CONF_UNIT_LOCALE,
     CONF_UNIT_NORMALIZER_ENABLED,
 )
+from .numeric_text import (
+    ParsedNumericText,
+    has_numeric_prefix_boundary,
+    looks_like_ambiguous_grouped_number,
+    numeric_text_re,
+    parse_numeric_text,
+)
 
-_NEGATIVE_SIGN_CHARS = "-\u2212\u2013\u2014"
 _CURATED_UNIT_LOCALES = (
     "de",
     "de-AT",
@@ -66,9 +74,9 @@ class UnitForms:
     singular: str
     plural: str | None = None
 
-    def for_number(self, number_text: str) -> str:
+    def for_singular(self, singular: bool) -> str:
         """Return the form for a numeric text."""
-        if _is_singular(number_text):
+        if singular:
             return self.singular
         return self.plural or self.singular
 
@@ -118,8 +126,13 @@ _UNIT_PATTERN = "|".join(
     for alias in sorted(_UNIT_ALIASES, key=lambda alias: len(alias.text), reverse=True)
 )
 _UNIT_RE = re.compile(
-    rf"(?<![\w.,:/+{_NEGATIVE_SIGN_CHARS}])"
-    rf"(?P<number>[{_NEGATIVE_SIGN_CHARS}]?\d+(?:[.,]\d+)?)"
+    rf"(?P<number>{numeric_text_re(allow_grouped_numbers=False).pattern})"
+    r"\s*"
+    rf"(?P<unit>{_UNIT_PATTERN})"
+    r"(?![\w/])"
+)
+_GROUPED_UNIT_RE = re.compile(
+    rf"(?P<number>{numeric_text_re(allow_grouped_numbers=True).pattern})"
     r"\s*"
     rf"(?P<unit>{_UNIT_PATTERN})"
     r"(?![\w/])"
@@ -184,26 +197,42 @@ class UnitNormalizer:
 
     enabled: bool = False
     locale: str = ""
+    allow_grouped_numbers: bool = False
+    number_locale_hint: str = ""
 
     def normalize(self, text: str) -> str:
         """Replace supported unit symbols with spoken unit text."""
         if not self.enabled or not self.locale:
             return text
 
-        return _UNIT_RE.sub(self._replace_match, text)
+        unit_re = _GROUPED_UNIT_RE if self.allow_grouped_numbers else _UNIT_RE
+        return unit_re.sub(self._replace_match, text)
 
     def _replace_match(self, match: re.Match[str]) -> str:
         """Replace one eligible number-plus-unit match."""
         number_text = match.group("number")
         unit_text = match.group("unit")
-        if _looks_like_grouped_number(number_text):
+        if not has_numeric_prefix_boundary(match.string, match.start("number")):
+            return match.group(0)
+        if (
+            not self.allow_grouped_numbers
+            and looks_like_ambiguous_grouped_number(number_text)
+        ):
+            return match.group(0)
+
+        parsed = parse_numeric_text(
+            number_text,
+            allow_grouped_numbers=self.allow_grouped_numbers,
+            locale_hint=self.number_locale_hint or self.locale,
+        )
+        if parsed is None:
             return match.group(0)
 
         unit_key = _unit_key(unit_text)
         if unit_key is None:
             return match.group(0)
 
-        return f"{number_text} {_unit_spoken_text(unit_key, self.locale, number_text)}"
+        return f"{number_text} {_unit_spoken_text(unit_key, self.locale, parsed)}"
 
 
 def parse_unit_normalizer(raw_config: Mapping[str, Any]) -> UnitNormalizer:
@@ -215,7 +244,19 @@ def parse_unit_normalizer(raw_config: Mapping[str, Any]) -> UnitNormalizer:
     enabled = bool(raw_config.get(CONF_UNIT_NORMALIZER_ENABLED, False))
     if enabled and not locale:
         raise UnitNormalizationError("Unit Locale is required")
-    return UnitNormalizer(enabled=enabled, locale=locale)
+    number_language = str(raw_config.get(CONF_NUMBER_SPELLOUT_LANGUAGE, "") or "")
+    return UnitNormalizer(
+        enabled=enabled,
+        locale=locale,
+        allow_grouped_numbers=bool(
+            raw_config.get(CONF_NUMBER_ALLOW_GROUPED_NUMBERS, False)
+        ),
+        number_locale_hint=_numeric_locale_hint(
+            number_language,
+            locale,
+            output_language,
+        ),
+    )
 
 
 def default_unit_locale(output_language: str = "") -> str:
@@ -237,27 +278,32 @@ def supported_unit_locales(output_languages: tuple[str, ...] = ()) -> tuple[str,
     return tuple(sorted(locales))
 
 
-def _unit_spoken_text(unit_key: str, locale: str, number_text: str) -> str:
+def _unit_spoken_text(
+    unit_key: str,
+    locale: str,
+    parsed_number: ParsedNumericText,
+) -> str:
     """Return spoken text for one unit symbol."""
     language = _language_from_locale(locale)
+    singular = _is_singular(parsed_number)
 
     if unit_key == "celsius":
         if language == "de":
             return "Grad"
         if language == "en" and _normal_temperature_scale(locale) == "celsius":
-            return _degree_word(number_text)
-        return f"{_degree_word(number_text)} Celsius"
+            return _degree_word(singular)
+        return f"{_degree_word(singular)} Celsius"
     if unit_key == "fahrenheit":
         if language == "de":
             return "Grad Fahrenheit"
         if language == "en" and _normal_temperature_scale(locale) == "fahrenheit":
-            return _degree_word(number_text)
-        return f"{_degree_word(number_text)} Fahrenheit"
+            return _degree_word(singular)
+        return f"{_degree_word(singular)} Fahrenheit"
 
     forms = _unit_forms_for_locale(locale).get(unit_key)
     if forms is None:
         return unit_key
-    return forms.for_number(number_text)
+    return forms.for_singular(singular)
 
 
 def _unit_forms_for_locale(locale: str) -> dict[str, UnitForms]:
@@ -277,9 +323,9 @@ def _unit_key(unit_text: str) -> str | None:
     )
 
 
-def _degree_word(number_text: str) -> str:
+def _degree_word(singular: bool) -> str:
     """Return singular or plural English degree text."""
-    return "degree" if _is_singular(number_text) else "degrees"
+    return "degree" if singular else "degrees"
 
 
 def _normal_temperature_scale(locale: str) -> str:
@@ -287,55 +333,27 @@ def _normal_temperature_scale(locale: str) -> str:
     return "fahrenheit" if _normalize_locale(locale) == "en-US" else "celsius"
 
 
-def _is_singular(number_text: str) -> bool:
+def _is_singular(parsed_number: ParsedNumericText) -> bool:
     """Return if the numeric text has singular unit value."""
+    if parsed_number.value is None:
+        return False
     try:
-        return abs(Decimal(_ascii_signed_number_text(number_text))) == Decimal(1)
+        return abs(Decimal(str(parsed_number.value))) == Decimal(1)
     except InvalidOperation:
         return False
 
 
-def _looks_like_grouped_number(number_text: str) -> bool:
-    """Return if one-separator numeric text looks like grouped thousands."""
-    unsigned = _unsigned_number_text(number_text)
-    separator = _decimal_separator(unsigned)
-    if separator is None:
-        return False
-
-    integer_part, fraction_part = unsigned.split(separator, 1)
+def _numeric_locale_hint(
+    number_language: str,
+    unit_locale: str,
+    output_language: str,
+) -> str:
+    """Return the best locale hint for ambiguous grouped numbers."""
     return (
-        len(fraction_part) == 3
-        and len(integer_part) <= 3
-        and not integer_part.startswith("0")
+        str(number_language or "").strip()
+        or str(unit_locale or "").strip()
+        or str(output_language or "").strip()
     )
-
-
-def _decimal_separator(unsigned_number_text: str) -> str | None:
-    """Return the single decimal separator in unsigned text if present."""
-    if "." in unsigned_number_text and "," in unsigned_number_text:
-        return None
-    if "." in unsigned_number_text:
-        return "."
-    if "," in unsigned_number_text:
-        return ","
-    return None
-
-
-def _ascii_signed_number_text(number_text: str) -> str:
-    """Return numeric text with a normalized ASCII negative sign."""
-    if _has_negative_sign(number_text):
-        return f"-{number_text[1:].replace(',', '.')}"
-    return number_text.replace(",", ".")
-
-
-def _has_negative_sign(number_text: str) -> bool:
-    """Return if numeric text starts with a supported negative sign."""
-    return bool(number_text) and number_text[0] in _NEGATIVE_SIGN_CHARS
-
-
-def _unsigned_number_text(number_text: str) -> str:
-    """Return numeric text without a supported leading negative sign."""
-    return number_text[1:] if _has_negative_sign(number_text) else number_text
 
 
 def _language_from_locale(locale: str) -> str:

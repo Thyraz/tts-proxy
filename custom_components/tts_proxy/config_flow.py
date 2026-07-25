@@ -42,6 +42,7 @@ from .const import (
     CONF_MARKDOWN_STRIP_STRIKETHROUGH,
     CONF_MARKDOWN_STRIP_TABLES,
     CONF_MAX_BUFFER_CHARS,
+    CONF_NUMBER_ALLOW_GROUPED_NUMBERS,
     CONF_NUMBER_NORMALIZER_ENABLED,
     CONF_NUMBER_SPELLOUT_LANGUAGE,
     CONF_OUTPUT_LANGUAGE,
@@ -665,6 +666,10 @@ def _number_section_schema(
                 vol.Optional(
                     CONF_NUMBER_NORMALIZER_ENABLED,
                     default=defaults.get(CONF_NUMBER_NORMALIZER_ENABLED, False),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_NUMBER_ALLOW_GROUPED_NUMBERS,
+                    default=defaults.get(CONF_NUMBER_ALLOW_GROUPED_NUMBERS, False),
                 ): selector.BooleanSelector(),
                 vol.Optional(
                     CONF_NUMBER_SPELLOUT_LANGUAGE,

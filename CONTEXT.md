@@ -109,8 +109,24 @@ A Text Cleanup behavior that runs after Markdown Cleanup and replaces one or mor
 _Avoid_: paragraph renderer, replacement rule
 
 **Eligible Numeric Text**:
-Numeric text that the Number Normalizer may safely spell out without guessing a higher-level structure. Simple integers, leading-zero integers, and one-separator decimals are eligible; grouped or structured tokens such as times, dates, versions, IP addresses, and alphanumeric identifiers are left for Replacement Rules or dedicated normalizers.
+Numeric text that the Number Normalizer may safely spell out without guessing a higher-level structure. Simple integers, leading-zero integers, one-separator decimals, and valid grouped numeric text are eligible; structured tokens such as times, dates, versions, IP addresses, and alphanumeric identifiers are left for dedicated normalizers or unchanged.
 _Avoid_: number-looking text, all numbers
+
+**Grouped Numeric Text**:
+Numeric text with repeated thousands groups before an optional decimal part, such as `20 222,2`, `20 222,2`, `20,222.2`, or `20.222,2`. One grouped number must use one consistent thousands separator, and each thousands group after the first must contain exactly three digits.
+_Avoid_: IP address, version
+
+**Grouped Number Detection**:
+A shared numeric-token behavior, enabled by the Allow Grouped Numbers option and disabled by default, that allows valid Grouped Numeric Text to be treated as eligible by the Number Normalizer and by normalizers that need a numeric prefix, such as the Unit Normalizer. For ambiguous single-separator text with exactly three trailing digits, it uses a locale hint to decide whether the separator is a thousands separator or a decimal separator. Valid IPv4 Address Text always wins over grouped-number interpretation.
+_Avoid_: unit option, thousands-only cleanup
+
+**IPv4 Address Text**:
+A structured token with exactly four dot-separated numeric blocks where each block is between `0` and `255`. It is not Eligible Numeric Text even when it resembles grouped numeric text.
+_Avoid_: grouped number, decimal number
+
+**Number Locale Hint**:
+The locale-like clue used by Grouped Number Detection when a numeric token is ambiguous. The priority is Number Spellout Language, then Unit Locale for Unit Normalizer matching, then Output Language; if no useful hint exists, ambiguous single-separator text is not treated as grouped.
+_Avoid_: Target TTS Entity language
 
 **Leading-Zero Integer Text**:
 A simple integer token that starts with one or more zeroes and is spoken as individual digits instead of as a mathematical integer, so the written zeroes remain audible.

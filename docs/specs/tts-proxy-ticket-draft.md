@@ -171,6 +171,7 @@ This breakdown captures the initial implementation plan for TTS Proxy.
 - [ ] Unit Normalizer handles common symbols for temperature, percent, power, energy, voltage, current, distance, speed, pressure, light, and data units.
 - [ ] `kmh` is accepted as an alias for `km/h`.
 - [ ] Bare `m` is not treated as meters.
+- [ ] Unit Normalizer can use the grouped-number setting for values such as `20 222,2 kWh`.
 - [ ] Provider Control Tags are preserved.
 - [ ] Tests cover catalog output, boundaries, pipeline order, streaming, config parsing, and sectioned preview config.
 
@@ -195,3 +196,17 @@ This breakdown captures the initial implementation plan for TTS Proxy.
 - [ ] Structured tokens such as IPs, identifiers, ratios, invalid clock values, and clock times with seconds are skipped.
 - [ ] Provider Control Tags are preserved.
 - [ ] Tests cover German and English output, ranges, durations, boundaries, pipeline order, streaming, config parsing, and sectioned preview config.
+
+## 11 - Add Grouped Number Detection
+
+**Blocked by:** 09 - Add Unit Normalizer.
+
+**What it delivers:** A user can optionally treat valid thousands-grouped values as one numeric token before number spellout.
+
+**Acceptance criteria**
+
+- [ ] Grouped Number Detection is disabled by default.
+- [ ] Valid grouped numbers with spaces, NBSP, narrow NBSP, thin spaces, dots, or commas are detected when enabled.
+- [ ] Ambiguous `1.342` and `1,342` values use the best available locale hint.
+- [ ] IPv4 addresses and invalid grouped tokens are left unchanged.
+- [ ] Tests cover Number Normalizer, Unit Normalizer, streaming, config parsing, and preview config.

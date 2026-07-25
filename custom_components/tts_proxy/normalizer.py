@@ -9,8 +9,10 @@ import re
 from typing import Any
 
 from .const import (
+    CONF_NUMBER_ALLOW_GROUPED_NUMBERS,
     CONF_NUMBER_NORMALIZER_ENABLED,
     CONF_NUMBER_SPELLOUT_LANGUAGE,
+    CONF_OUTPUT_LANGUAGE,
     CONF_REPLACEMENT_RULES,
     DEFAULT_MAX_BUFFER_CHARS,
     DEFAULT_SAFETY_TAIL_CHARS,
@@ -36,6 +38,11 @@ from .markdown_normalizer import (
     MarkdownCleanupNormalizer,
     parse_markdown_cleanup_normalizer,
 )
+from .numeric_text import (
+    has_numeric_boundaries,
+    numeric_text_re,
+    parse_numeric_text,
+)
 from .text_cleanup_normalizer import (
     TextCleanupNormalizer,
     parse_text_cleanup_normalizer,
@@ -44,14 +51,8 @@ from .time_normalizer import TimeNormalizer, parse_time_normalizer
 from .unit_normalizer import UnitNormalizer, parse_unit_normalizer
 
 _CONTROL_TAG_RE = re.compile(r"(<[^>]*>|\[[^\]]*\])")
-_NEGATIVE_SIGN_CHARS = "-\u2212\u2013\u2014"
-_NUMERIC_TEXT_RE = re.compile(rf"[{_NEGATIVE_SIGN_CHARS}]?\d+(?:[.,]\d+)?")
 _SENTENCE_PUNCTUATION = ".!?:;"
 _CLOSING_PUNCTUATION = "\"')]}"
-_STRUCTURAL_PREFIX_CHARS = f".,:/+{_NEGATIVE_SIGN_CHARS}"
-_STRUCTURAL_SUFFIX_CHARS = f":/+{_NEGATIVE_SIGN_CHARS}"
-_MAX_INTEGER_DIGITS = 9
-_MAX_FRACTION_DIGITS = 6
 
 NumberConverter = Callable[[int | str, str], str]
 
@@ -157,6 +158,8 @@ class NumberNormalizer:
 
     enabled: bool = False
     language: str = ""
+    allow_grouped_numbers: bool = False
+    locale_hint: str = ""
     converter: NumberConverter | None = None
 
     def normalize(self, text: str) -> str:
@@ -164,7 +167,9 @@ class NumberNormalizer:
         if not self.enabled or not self.language:
             return text
 
-        return _NUMERIC_TEXT_RE.sub(self._replace_match, text)
+        return numeric_text_re(
+            allow_grouped_numbers=self.allow_grouped_numbers
+        ).sub(self._replace_match, text)
 
     @property
     def _number_converter(self) -> NumberConverter:
@@ -174,17 +179,24 @@ class NumberNormalizer:
     def _replace_match(self, match: re.Match[str]) -> str:
         """Replace one eligible numeric token."""
         number_text = match.group(0)
-        if not _is_eligible_numeric_match(match):
+        if not has_numeric_boundaries(match.string, match.start(), match.end()):
             return number_text
 
-        digit_sequence = _leading_zero_integer_digits(number_text)
-        if digit_sequence is not None:
+        parsed = parse_numeric_text(
+            number_text,
+            allow_grouped_numbers=self.allow_grouped_numbers,
+            locale_hint=self.locale_hint or self.language,
+        )
+        if parsed is None:
+            return number_text
+
+        if parsed.digit_sequence is not None:
             try:
                 return _spellout_digit_sequence(
-                    digit_sequence,
+                    parsed.digit_sequence,
                     self.language,
                     self._number_converter,
-                    negative=_has_negative_sign(number_text),
+                    negative=parsed.negative,
                 )
             except (
                 ArithmeticError,
@@ -195,12 +207,11 @@ class NumberNormalizer:
             ):
                 return number_text
 
-        value = _number_value(number_text)
-        if value is None:
+        if parsed.value is None:
             return number_text
 
         try:
-            return str(self._number_converter(value, self.language))
+            return str(self._number_converter(parsed.value, self.language))
         except (
             ArithmeticError,
             ImportError,
@@ -215,8 +226,18 @@ def parse_number_normalizer(raw_config: Mapping[str, Any]) -> NumberNormalizer:
     """Parse and validate Number Normalizer configuration."""
     enabled = bool(raw_config.get(CONF_NUMBER_NORMALIZER_ENABLED, False))
     language = str(raw_config.get(CONF_NUMBER_SPELLOUT_LANGUAGE, "") or "").strip()
+    allow_grouped_numbers = bool(
+        raw_config.get(CONF_NUMBER_ALLOW_GROUPED_NUMBERS, False)
+    )
+    output_language = str(raw_config.get(CONF_OUTPUT_LANGUAGE, "") or "")
+    locale_hint = _number_locale_hint(language, output_language)
     if not enabled:
-        return NumberNormalizer(enabled=False, language=language)
+        return NumberNormalizer(
+            enabled=False,
+            language=language,
+            allow_grouped_numbers=allow_grouped_numbers,
+            locale_hint=locale_hint,
+        )
 
     if not language:
         raise NumberNormalizationError("Number Spellout Language is required")
@@ -229,7 +250,12 @@ def parse_number_normalizer(raw_config: Mapping[str, Any]) -> NumberNormalizer:
             f"Unsupported Number Spellout Language: {language}"
         )
 
-    return NumberNormalizer(enabled=True, language=language)
+    return NumberNormalizer(
+        enabled=True,
+        language=language,
+        allow_grouped_numbers=allow_grouped_numbers,
+        locale_hint=locale_hint,
+    )
 
 
 def supported_number_spellout_languages() -> tuple[str, ...]:
@@ -240,6 +266,11 @@ def supported_number_spellout_languages() -> tuple[str, ...]:
         return ()
 
     return tuple(sorted(str(language) for language in CONVERTER_CLASSES))
+
+
+def _number_locale_hint(number_language: str, output_language: str) -> str:
+    """Return the best locale hint for ambiguous grouped numbers."""
+    return number_language or output_language
 
 
 def normalize_text_from_raw_config(text: str, raw_config: Mapping[str, Any]) -> str:
@@ -441,85 +472,6 @@ def _apply_builtin_normalizers(
     return normalized
 
 
-def _number_value(number_text: str) -> int | str | None:
-    """Return a converter value for eligible numeric text."""
-    negative = _has_negative_sign(number_text)
-    unsigned = _unsigned_number_text(number_text)
-    separator = _decimal_separator(unsigned)
-
-    if separator is None:
-        if not _integer_part_is_eligible(unsigned):
-            return None
-        value = int(unsigned)
-        return -value if negative and value else value
-
-    integer_part, fraction_part = unsigned.split(separator, 1)
-    if not _integer_part_length_is_eligible(integer_part):
-        return None
-    if len(fraction_part) > _MAX_FRACTION_DIGITS:
-        return None
-
-    normalized_integer = integer_part.lstrip("0") or "0"
-    normalized_fraction = fraction_part.rstrip("0")
-    if not normalized_fraction:
-        value = int(normalized_integer)
-        return -value if negative and value else value
-
-    sign = "-" if negative else ""
-    return f"{sign}{normalized_integer}.{normalized_fraction}"
-
-
-def _decimal_separator(unsigned_number_text: str) -> str | None:
-    """Return the single decimal separator in unsigned text if present."""
-    if "." in unsigned_number_text and "," in unsigned_number_text:
-        return None
-    if "." in unsigned_number_text:
-        return "."
-    if "," in unsigned_number_text:
-        return ","
-    return None
-
-
-def _integer_part_is_eligible(integer_part: str) -> bool:
-    """Return if an integer part is safe to spell out."""
-    if not _integer_part_length_is_eligible(integer_part):
-        return False
-    if len(integer_part) > 1 and integer_part.startswith("0"):
-        return False
-    return True
-
-
-def _integer_part_length_is_eligible(integer_part: str) -> bool:
-    """Return if an integer part has a safe size."""
-    if not integer_part:
-        return False
-    if len(integer_part) > _MAX_INTEGER_DIGITS:
-        return False
-    return True
-
-
-def _leading_zero_integer_digits(number_text: str) -> tuple[int, ...] | None:
-    """Return digits for a simple leading-zero integer token."""
-    unsigned = _unsigned_number_text(number_text)
-    if _decimal_separator(unsigned) is not None:
-        return None
-    if not _integer_part_length_is_eligible(unsigned):
-        return None
-    if len(unsigned) <= 1 or not unsigned.startswith("0"):
-        return None
-    return tuple(int(char) for char in unsigned)
-
-
-def _has_negative_sign(number_text: str) -> bool:
-    """Return if numeric text starts with a supported negative sign."""
-    return bool(number_text) and number_text[0] in _NEGATIVE_SIGN_CHARS
-
-
-def _unsigned_number_text(number_text: str) -> str:
-    """Return numeric text without a supported leading negative sign."""
-    return number_text[1:] if _has_negative_sign(number_text) else number_text
-
-
 def _spellout_digit_sequence(
     digits: tuple[int, ...],
     language: str,
@@ -543,35 +495,6 @@ def _localized_minus_word(language: str, converter: NumberConverter) -> str:
         if minus_word:
             return minus_word
     return "minus"
-
-
-def _is_eligible_numeric_match(match: re.Match[str]) -> bool:
-    """Return if a numeric regex match is structurally safe to spell out."""
-    text = match.string
-    start = match.start()
-    end = match.end()
-
-    if start > 0:
-        previous = text[start - 1]
-        if (
-            previous.isalnum()
-            or previous == "_"
-            or previous in _STRUCTURAL_PREFIX_CHARS
-        ):
-            return False
-
-    if end < len(text):
-        next_char = text[end]
-        if (
-            next_char.isalnum()
-            or next_char == "_"
-            or next_char in _STRUCTURAL_SUFFIX_CHARS
-        ):
-            return False
-        if next_char in ".," and end + 1 < len(text) and text[end + 1].isdigit():
-            return False
-
-    return True
 
 
 def _spellout_number(value: int | str, language: str) -> str:

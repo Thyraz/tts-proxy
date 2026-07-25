@@ -26,6 +26,8 @@ Time detection can spell German and English clock times, time ranges, and option
 
 Unit detection covers common smart-home symbols like `°C`, `%`, `W`, `kWh`, `km/h`, `kmh`, `hPa`, and `Mbit/s`. German and English have curated wording; other locales use a conservative fallback.
 
+Number detection can optionally handle grouped values such as `20 222,2 kWh` or `20,222.2 kWh`.
+
 TTS Proxy supports streaming and non-streaming TTS integrations.
 
 ## Install with HACS
