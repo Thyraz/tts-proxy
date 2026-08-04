@@ -97,8 +97,9 @@ from .date_normalizer import (
 )
 from .emoji_normalizer import (
     EmojiNormalizationError,
+    async_prepare_emoji_config,
+    async_supported_emoji_languages,
     default_emoji_language,
-    supported_emoji_languages,
 )
 from .form_data import flatten_config_sections
 from .normalizer import (
@@ -155,9 +156,11 @@ class TtsProxyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Collect Output Language and rule details."""
         errors: dict[str, str] = {}
         partial_config = getattr(self, "_partial_config", {})
+        emoji_languages = list(await async_supported_emoji_languages(self.hass))
 
         if user_input is not None:
             data = {**partial_config, **user_input}
+            await async_prepare_emoji_config(self.hass, data)
             errors = _validate_details(self.hass, data)
             if not errors:
                 stored_data = serializable_config(data)
@@ -172,6 +175,7 @@ class TtsProxyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self.hass,
                 partial_config[CONF_TARGET_TTS_ENTITY],
                 user_input,
+                emoji_languages=emoji_languages,
             ),
             errors=errors,
             preview=PREVIEW_NAME,
@@ -229,9 +233,11 @@ class TtsProxyOptionsFlow(config_entries.OptionsFlow):
         """Manage Output Language, rules, and buffer options."""
         partial_config = self._partial_config or merged_entry_config(self._entry)
         errors: dict[str, str] = {}
+        emoji_languages = list(await async_supported_emoji_languages(self.hass))
 
         if user_input is not None:
             data = {**partial_config, **user_input}
+            await async_prepare_emoji_config(self.hass, data)
             errors = _validate_details(self.hass, data)
             if not errors:
                 options = serializable_config(data)
@@ -243,6 +249,7 @@ class TtsProxyOptionsFlow(config_entries.OptionsFlow):
                 self.hass,
                 partial_config[CONF_TARGET_TTS_ENTITY],
                 partial_config if user_input is None else user_input,
+                emoji_languages=emoji_languages,
             ),
             errors=errors,
             preview=PREVIEW_NAME,
@@ -271,6 +278,8 @@ def _details_schema(
     hass: HomeAssistant,
     target_tts_entity: str,
     defaults: dict[str, Any] | None = None,
+    *,
+    emoji_languages: list[str],
 ) -> vol.Schema:
     """Build the Output Language, Replacement Rules, and buffer schema."""
     defaults = form_defaults(defaults)
@@ -300,7 +309,6 @@ def _details_schema(
         CONF_DATE_INPUT_FORMATS,
         list(default_date_input_formats(date_locale_default)),
     )
-    emoji_languages = list(supported_emoji_languages())
     emoji_language_default = _default_emoji_language(
         defaults,
         language_default,
@@ -982,8 +990,8 @@ def _get_target_tts_entity(
         vol.Required("user_input"): dict,
     }
 )
-@callback
-def ws_start_preview(
+@websocket_api.async_response
+async def ws_start_preview(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -1004,6 +1012,7 @@ def ws_start_preview(
         return
 
     try:
+        await async_prepare_emoji_config(hass, user_input)
         normalized = normalize_text_from_raw_config(preview_text, user_input)
     except (
         DateNormalizationError,

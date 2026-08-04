@@ -87,6 +87,9 @@ from custom_components.tts_proxy.date_normalizer import (
 from custom_components.tts_proxy.emoji_normalizer import (
     EmojiNormalizationError,
     EmojiNormalizer,
+    async_prepare_emoji_config,
+    async_prepare_emoji_normalizer,
+    async_supported_emoji_languages,
     default_emoji_language,
     parse_emoji_normalizer,
 )
@@ -250,6 +253,19 @@ class _FakeEmojiModule:
         if "de" in self.loaded_languages:
             data["de"] = ":grinsendes_gesicht_mit_lachenden_augen:"
         return text.replace("😄", replace("😄", data))
+
+
+class _FakeHass:
+    """Fake Home Assistant object with executor-job tracking."""
+
+    def __init__(self) -> None:
+        """Initialize job tracking."""
+        self.executor_jobs: list[tuple[object, tuple[object, ...]]] = []
+
+    async def async_add_executor_job(self, target, *args):
+        """Run and record an executor job synchronously for tests."""
+        self.executor_jobs.append((target, args))
+        return target(*args)
 
 
 def _german_number_normalizer(
@@ -902,6 +918,82 @@ class EmojiNormalizerTests(unittest.TestCase):
                 normalize_text_from_raw_config("Gut 😀", raw_config),
                 "Gut, grinsendes gesicht",
             )
+
+
+class AsyncEmojiPreparationTests(unittest.IsolatedAsyncioTestCase):
+    """Emoji backend preparation behavior."""
+
+    async def test_supported_emoji_languages_runs_in_executor(self) -> None:
+        hass = _FakeHass()
+
+        with patch(
+            "custom_components.tts_proxy.emoji_normalizer.supported_emoji_languages",
+            return_value=("de", "en"),
+        ) as supported:
+            self.assertEqual(
+                await async_supported_emoji_languages(hass),
+                ("de", "en"),
+            )
+
+        self.assertEqual(hass.executor_jobs, [(supported, ())])
+
+    async def test_prepare_spellout_config_runs_backend_load_in_executor(self) -> None:
+        hass = _FakeHass()
+        raw_config = {
+            CONF_EMOJI_NORMALIZER_ENABLED: True,
+            CONF_EMOJI_HANDLING: EMOJI_HANDLING_SPELLOUT,
+            CONF_EMOJI_LANGUAGE: "de",
+        }
+
+        with patch(
+            "custom_components.tts_proxy.emoji_normalizer._prepare_emoji_backend",
+        ) as prepare:
+            await async_prepare_emoji_config(hass, raw_config)
+
+        prepare.assert_called_once_with(("de", "en"))
+        self.assertEqual(hass.executor_jobs, [(prepare, (("de", "en"),))])
+
+    async def test_prepare_remove_config_imports_backend_in_executor(self) -> None:
+        hass = _FakeHass()
+        raw_config = {
+            CONF_EMOJI_NORMALIZER_ENABLED: True,
+            CONF_EMOJI_HANDLING: EMOJI_HANDLING_REMOVE,
+            CONF_EMOJI_LANGUAGE: "",
+        }
+
+        with patch(
+            "custom_components.tts_proxy.emoji_normalizer._prepare_emoji_backend",
+        ) as prepare:
+            await async_prepare_emoji_config(hass, raw_config)
+
+        prepare.assert_called_once_with(())
+        self.assertEqual(hass.executor_jobs, [(prepare, ((),))])
+
+    async def test_prepare_disabled_config_does_not_use_executor(self) -> None:
+        hass = _FakeHass()
+
+        await async_prepare_emoji_config(
+            hass,
+            {CONF_EMOJI_NORMALIZER_ENABLED: False},
+        )
+
+        self.assertEqual(hass.executor_jobs, [])
+
+    async def test_prepare_parsed_normalizer_runs_backend_load_in_executor(self) -> None:
+        hass = _FakeHass()
+        normalizer = EmojiNormalizer(
+            enabled=True,
+            handling=EMOJI_HANDLING_SPELLOUT,
+            language="de",
+        )
+
+        with patch(
+            "custom_components.tts_proxy.emoji_normalizer._prepare_emoji_backend",
+        ) as prepare:
+            await async_prepare_emoji_normalizer(hass, normalizer)
+
+        prepare.assert_called_once_with(("de", "en"))
+        self.assertEqual(hass.executor_jobs, [(prepare, (("de", "en"),))])
 
 
 class NumberNormalizerTests(unittest.TestCase):

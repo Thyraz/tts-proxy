@@ -21,6 +21,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 
 from .config import merged_entry_config, parse_proxy_config
 from .const import DOMAIN
+from .emoji_normalizer import async_prepare_emoji_config, async_prepare_emoji_normalizer
 from .normalizer import normalize_stream, normalize_text
 
 
@@ -30,6 +31,7 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the TTS Proxy platform."""
+    await async_prepare_emoji_config(hass, merged_entry_config(entry))
     async_add_entities([ProxyTextToSpeechEntity(entry)])
 
 
@@ -115,6 +117,7 @@ class ProxyTextToSpeechEntity(TextToSpeechEntity):
     ) -> TtsAudioType:
         """Generate one-shot speech through the Target TTS Entity."""
         target_entity = self._require_target_tts_entity()
+        await async_prepare_emoji_normalizer(self.hass, self._config.emoji_normalizer)
         normalized = normalize_text(
             message,
             self._config.rules,
@@ -157,6 +160,7 @@ class ProxyTextToSpeechEntity(TextToSpeechEntity):
 
             return TTSAudioResponse(extension, data_gen())
 
+        await async_prepare_emoji_normalizer(self.hass, self._config.emoji_normalizer)
         normalized_stream = normalize_stream(
             request.message_gen,
             self._config.rules,

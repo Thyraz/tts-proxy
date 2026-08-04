@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .const import (
     CONF_EMOJI_HANDLING,
@@ -20,6 +20,10 @@ EmojiReplacementCallback = Callable[[str, Mapping[str, Any] | None], str]
 EmojiReplacer = Callable[[str, EmojiReplacementCallback], str]
 
 _EMOJI_METADATA_KEYS = {"E", "alias", "status", "variant"}
+_LOADED_EMOJI_LANGUAGES: set[str] = set()
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
 
 
 class EmojiHandling(StrEnum):
@@ -122,6 +126,49 @@ def parse_emoji_normalizer(raw_config: Mapping[str, Any]) -> EmojiNormalizer:
     return EmojiNormalizer(enabled=True, handling=handling, language=language)
 
 
+async def async_supported_emoji_languages(hass: HomeAssistant) -> tuple[str, ...]:
+    """Return languages supported by the emoji package via executor."""
+    return await hass.async_add_executor_job(supported_emoji_languages)
+
+
+async def async_prepare_emoji_config(
+    hass: HomeAssistant,
+    raw_config: Mapping[str, Any],
+) -> None:
+    """Prepare the emoji backend for a raw config via executor."""
+    enabled = bool(raw_config.get(CONF_EMOJI_NORMALIZER_ENABLED, False))
+    if not enabled:
+        return
+
+    raw_handling = raw_config.get(CONF_EMOJI_HANDLING) or EMOJI_HANDLING_SPELLOUT
+    try:
+        handling = EmojiHandling(str(raw_handling))
+    except ValueError:
+        return
+
+    await _async_prepare_emoji_backend(
+        hass,
+        _emoji_backend_languages(
+            handling,
+            str(raw_config.get(CONF_EMOJI_LANGUAGE, "") or "").strip(),
+        ),
+    )
+
+
+async def async_prepare_emoji_normalizer(
+    hass: HomeAssistant,
+    normalizer: EmojiNormalizer,
+) -> None:
+    """Prepare the emoji backend for a parsed normalizer via executor."""
+    if not normalizer.enabled:
+        return
+
+    await _async_prepare_emoji_backend(
+        hass,
+        _emoji_backend_languages(normalizer.handling, normalizer.language),
+    )
+
+
 def supported_emoji_languages() -> tuple[str, ...]:
     """Return languages supported by the emoji package."""
     try:
@@ -168,6 +215,34 @@ def _replace_emoji(
     return str(emoji.replace_emoji(text, replace=replace))
 
 
+async def _async_prepare_emoji_backend(
+    hass: HomeAssistant,
+    languages: tuple[str, ...],
+) -> None:
+    """Import emoji and load language data outside the event loop."""
+    await hass.async_add_executor_job(_prepare_emoji_backend, languages)
+
+
+def _prepare_emoji_backend(languages: tuple[str, ...]) -> None:
+    """Import emoji and load language data for later synchronous use."""
+    try:
+        import emoji  # noqa: F401
+    except ImportError:
+        return
+
+    _load_emoji_languages(languages)
+
+
+def _emoji_backend_languages(
+    handling: EmojiHandling,
+    language: str,
+) -> tuple[str, ...]:
+    """Return emoji languages that need preloading for a handling mode."""
+    if handling is EmojiHandling.SPELLOUT:
+        return (language, "en")
+    return ()
+
+
 def _load_emoji_languages(languages: tuple[str, ...]) -> None:
     """Load emoji language data into EMOJI_DATA when the backend requires it."""
     try:
@@ -179,15 +254,20 @@ def _load_emoji_languages(languages: tuple[str, ...]) -> None:
     if load_language is None:
         return
 
-    loaded: set[str] = set()
+    requested: set[str] = set()
     for language in languages:
-        if not language or language in loaded:
+        if (
+            not language
+            or language in requested
+            or language in _LOADED_EMOJI_LANGUAGES
+        ):
             continue
-        loaded.add(language)
+        requested.add(language)
         try:
             load_language(language)
         except (TypeError, ValueError):
             continue
+        _LOADED_EMOJI_LANGUAGES.add(language)
 
 
 def _spoken_emoji_name(
