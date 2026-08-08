@@ -44,6 +44,7 @@ from .const import (
     CONF_MAX_BUFFER_CHARS,
     CONF_NUMBER_ALLOW_GROUPED_NUMBERS,
     CONF_NUMBER_NORMALIZER_ENABLED,
+    CONF_NUMBER_SEPARATE_GERMAN_WORD_PARTS,
     CONF_NUMBER_SPELLOUT_LANGUAGE,
     CONF_OUTPUT_LANGUAGE,
     CONF_PREVIEW_TEXT,
@@ -678,6 +679,12 @@ def _number_section_schema(
                 vol.Optional(
                     CONF_NUMBER_ALLOW_GROUPED_NUMBERS,
                     default=defaults.get(CONF_NUMBER_ALLOW_GROUPED_NUMBERS, False),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_NUMBER_SEPARATE_GERMAN_WORD_PARTS,
+                    default=defaults.get(
+                        CONF_NUMBER_SEPARATE_GERMAN_WORD_PARTS, False
+                    ),
                 ): selector.BooleanSelector(),
                 vol.Optional(
                     CONF_NUMBER_SPELLOUT_LANGUAGE,

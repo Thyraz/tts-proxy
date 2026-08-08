@@ -103,7 +103,11 @@
             "data": {
               "number_normalizer_enabled": "Enable Number Normalizer",
               "number_allow_grouped_numbers": "Allow Grouped Numbers",
+              "number_separate_german_word_parts": "Separate German Number Word Parts",
               "number_spellout_language": "Number Spellout Language"
+            },
+            "data_description": {
+              "number_separate_german_word_parts": "Only applies when Number Spellout Language is de. Other languages use the default num2words output."
             }
           },
           "streaming": {
@@ -231,7 +235,11 @@
             "data": {
               "number_normalizer_enabled": "Enable Number Normalizer",
               "number_allow_grouped_numbers": "Allow Grouped Numbers",
+              "number_separate_german_word_parts": "Separate German Number Word Parts",
               "number_spellout_language": "Number Spellout Language"
+            },
+            "data_description": {
+              "number_separate_german_word_parts": "Only applies when Number Spellout Language is de. Other languages use the default num2words output."
             }
           },
           "streaming": {

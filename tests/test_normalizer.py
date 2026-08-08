@@ -32,6 +32,7 @@ from custom_components.tts_proxy.const import (
     CONF_MAX_BUFFER_CHARS,
     CONF_NUMBER_ALLOW_GROUPED_NUMBERS,
     CONF_NUMBER_NORMALIZER_ENABLED,
+    CONF_NUMBER_SEPARATE_GERMAN_WORD_PARTS,
     CONF_NUMBER_SPELLOUT_LANGUAGE,
     CONF_OUTPUT_LANGUAGE,
     CONF_PREVIEW_TEXT,
@@ -156,6 +157,7 @@ def _fake_german_number(value: int | str, language: str) -> str:
         53: "dreiundfünfzig",
         123: "einhundertdreiundzwanzig",
         1342: "eintausenddreihundertzweiundvierzig",
+        2395: "zweitausenddreihundertfünfundneunzig",
         2026: "zweitausendsechsundzwanzig",
         "0.5": "null Komma fünf",
         "0.7": "null Komma sieben",
@@ -272,6 +274,7 @@ def _german_number_normalizer(
     *,
     allow_grouped_numbers: bool = False,
     locale_hint: str = "de",
+    separate_german_word_parts: bool = False,
 ) -> NumberNormalizer:
     """Return an enabled fake German Number Normalizer."""
     return NumberNormalizer(
@@ -279,6 +282,7 @@ def _german_number_normalizer(
         language="de",
         converter=_fake_german_number,
         allow_grouped_numbers=allow_grouped_numbers,
+        separate_german_word_parts=separate_german_word_parts,
         locale_hint=locale_hint,
     )
 
@@ -1010,6 +1014,69 @@ class NumberNormalizerTests(unittest.TestCase):
             "Wert einhundertdreiundzwanzig und minus fünf.",
         )
 
+    def test_separates_german_number_word_parts_when_enabled(self) -> None:
+        self.assertEqual(
+            normalize_text(
+                "Werte 2395, 21, 12 und -2395.",
+                [],
+                _german_number_normalizer(separate_german_word_parts=True),
+            ),
+            (
+                "Werte zwei-tausend-drei-hundert-fünf-und-neunzig, "
+                "ein-und-zwanzig, zwölf und minus zwei-tausend-drei-hundert-"
+                "fünf-und-neunzig."
+            ),
+        )
+
+    def test_separates_german_decimal_integer_word_parts(self) -> None:
+        self.assertEqual(
+            normalize_text(
+                "Werte 53.4 und 0.05.",
+                [],
+                _german_number_normalizer(separate_german_word_parts=True),
+            ),
+            "Werte drei-und-fünfzig Komma vier und null Komma null fünf.",
+        )
+
+    def test_separates_grouped_german_number_word_parts(self) -> None:
+        self.assertEqual(
+            normalize_text(
+                "Wert 20\u202f222,2.",
+                [],
+                _german_number_normalizer(
+                    allow_grouped_numbers=True,
+                    separate_german_word_parts=True,
+                ),
+            ),
+            "Wert zwanzig-tausend-zwei-hundert-zwei-und-zwanzig Komma zwei.",
+        )
+
+    def test_german_word_part_separation_keeps_leading_zero_integers(self) -> None:
+        self.assertEqual(
+            normalize_text(
+                "Codes 007 und -09.",
+                [],
+                _german_number_normalizer(separate_german_word_parts=True),
+            ),
+            "Codes null null sieben und minus null neun.",
+        )
+
+    def test_german_word_part_separation_is_ignored_for_other_languages(self) -> None:
+        def show_value(value: int | str, language: str) -> str:
+            return f"{language}:{value}"
+
+        normalizer = NumberNormalizer(
+            enabled=True,
+            language="en",
+            converter=show_value,
+            separate_german_word_parts=True,
+        )
+
+        self.assertEqual(
+            normalize_text("Value 2395.", [], normalizer),
+            "Value en:2395.",
+        )
+
     def test_spells_numbers_with_unicode_minus_signs(self) -> None:
         self.assertEqual(
             normalize_text(
@@ -1239,6 +1306,25 @@ class NumberNormalizerTests(unittest.TestCase):
             self.assertEqual(
                 normalize_text_from_raw_config("Temp 53.4°C.", raw_config),
                 "Temp dreiundfünfzig Komma vier Grad.",
+            )
+
+    def test_preview_can_use_german_number_word_part_separation(self) -> None:
+        raw_config = {
+            CONF_NUMBER_NORMALIZER_ENABLED: True,
+            CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
+            CONF_NUMBER_SEPARATE_GERMAN_WORD_PARTS: True,
+        }
+
+        with patch(
+            "custom_components.tts_proxy.normalizer.supported_number_spellout_languages",
+            return_value=("de",),
+        ):
+            self.assertEqual(
+                normalize_text_from_raw_config("Wert 2395 und 53.4.", raw_config),
+                (
+                    "Wert zwei-tausend-drei-hundert-fünf-und-neunzig "
+                    "und drei-und-fünfzig Komma vier."
+                ),
             )
 
     def test_normalizes_preview_text_from_unsaved_sectioned_raw_config(self) -> None:
@@ -2366,6 +2452,7 @@ class ConfigTests(unittest.TestCase):
                     CONF_NUMBER_NORMALIZER_ENABLED: False,
                     CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
                     CONF_NUMBER_ALLOW_GROUPED_NUMBERS: True,
+                    CONF_NUMBER_SEPARATE_GERMAN_WORD_PARTS: True,
                     CONF_SAFETY_TAIL_CHARS: 64,
                     CONF_MAX_BUFFER_CHARS: 500,
                 }
@@ -2391,6 +2478,7 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(config.number_normalizer.enabled)
         self.assertEqual(config.number_normalizer.language, "de")
         self.assertTrue(config.number_normalizer.allow_grouped_numbers)
+        self.assertTrue(config.number_normalizer.separate_german_word_parts)
         self.assertEqual(config.safety_tail_chars, 64)
         self.assertEqual(config.max_buffer_chars, 500)
 
@@ -2475,6 +2563,7 @@ class ConfigTests(unittest.TestCase):
                         CONF_NUMBER_NORMALIZER_ENABLED: False,
                         CONF_NUMBER_SPELLOUT_LANGUAGE: "de",
                         CONF_NUMBER_ALLOW_GROUPED_NUMBERS: True,
+                        CONF_NUMBER_SEPARATE_GERMAN_WORD_PARTS: True,
                     },
                 }
             )
@@ -2498,6 +2587,7 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(config[CONF_UNIT_NORMALIZER_ENABLED])
         self.assertEqual(config[CONF_UNIT_LOCALE], "en-US")
         self.assertTrue(config[CONF_NUMBER_ALLOW_GROUPED_NUMBERS])
+        self.assertTrue(config[CONF_NUMBER_SEPARATE_GERMAN_WORD_PARTS])
         self.assertNotIn(SECTION_GENERAL, config)
         self.assertNotIn(SECTION_MARKDOWN, config)
         self.assertNotIn(SECTION_TEXT_CLEANUP, config)

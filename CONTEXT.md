@@ -60,6 +60,10 @@ _Avoid_: output language, TTS language
 An optional built-in normalizer owned by a Proxy TTS Entity that converts eligible numeric text into language-specific spoken words after Replacement Rules, Date Normalizer, Time Normalizer, and Unit Normalizer processing have run and before delegating to the Target TTS Entity. It is configured separately from Replacement Rules because it needs token classification and language-specific number grammar, not simple string matching.
 _Avoid_: number replacement rule, regex number rule
 
+**Number Word Part Separation**:
+An optional Number Normalizer behavior that separates curated sub-word parts in spoken number text to improve TTS pronunciation. It is not syllable hyphenation or generic word splitting. The MVP supports German cardinal number spellout only; unsupported languages use the default `num2words` output.
+_Avoid_: hyphenation, syllable splitting
+
 **Unit Normalizer**:
 An optional built-in normalizer owned by a Proxy TTS Entity that detects eligible numeric text followed by a supported unit symbol or technical abbreviation, replaces only the unit with localized spoken unit text, and leaves the number for the Number Normalizer. The MVP supports common smart-home symbols for temperature, percent, power, energy, voltage, current, distance, speed, pressure, light, and data units, including `kmh` as an alias for `km/h`, but not bare `m`.
 _Avoid_: unit replacement rule, unit parser

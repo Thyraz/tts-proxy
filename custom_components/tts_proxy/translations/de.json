@@ -103,7 +103,11 @@
             "data": {
               "number_normalizer_enabled": "Zahlennormalisierung aktivieren",
               "number_allow_grouped_numbers": "Gruppierte Zahlen erlauben",
+              "number_separate_german_word_parts": "Deutsche Zahlwort-Bestandteile trennen",
               "number_spellout_language": "Sprache für ausgeschriebene Zahlen"
+            },
+            "data_description": {
+              "number_separate_german_word_parts": "Greift nur, wenn die Sprache für ausgeschriebene Zahlen de ist. Andere Sprachen verwenden die normale num2words-Ausgabe."
             }
           },
           "streaming": {
@@ -231,7 +235,11 @@
             "data": {
               "number_normalizer_enabled": "Zahlennormalisierung aktivieren",
               "number_allow_grouped_numbers": "Gruppierte Zahlen erlauben",
+              "number_separate_german_word_parts": "Deutsche Zahlwort-Bestandteile trennen",
               "number_spellout_language": "Sprache für ausgeschriebene Zahlen"
+            },
+            "data_description": {
+              "number_separate_german_word_parts": "Greift nur, wenn die Sprache für ausgeschriebene Zahlen de ist. Andere Sprachen verwenden die normale num2words-Ausgabe."
             }
           },
           "streaming": {

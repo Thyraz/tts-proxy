@@ -11,6 +11,7 @@ from typing import Any
 from .const import (
     CONF_NUMBER_ALLOW_GROUPED_NUMBERS,
     CONF_NUMBER_NORMALIZER_ENABLED,
+    CONF_NUMBER_SEPARATE_GERMAN_WORD_PARTS,
     CONF_NUMBER_SPELLOUT_LANGUAGE,
     CONF_OUTPUT_LANGUAGE,
     CONF_REPLACEMENT_RULES,
@@ -34,6 +35,7 @@ from .date_normalizer import (
 )
 from .emoji_normalizer import EmojiNormalizer, parse_emoji_normalizer
 from .form_data import flatten_config_sections
+from .german_number_words import spellout_german_number_with_word_parts
 from .markdown_normalizer import (
     MarkdownCleanupNormalizer,
     parse_markdown_cleanup_normalizer,
@@ -159,6 +161,7 @@ class NumberNormalizer:
     enabled: bool = False
     language: str = ""
     allow_grouped_numbers: bool = False
+    separate_german_word_parts: bool = False
     locale_hint: str = ""
     converter: NumberConverter | None = None
 
@@ -211,6 +214,11 @@ class NumberNormalizer:
             return number_text
 
         try:
+            if (
+                self.separate_german_word_parts
+                and _supports_german_word_part_separation(self.language)
+            ):
+                return spellout_german_number_with_word_parts(parsed.value)
             return str(self._number_converter(parsed.value, self.language))
         except (
             ArithmeticError,
@@ -229,6 +237,9 @@ def parse_number_normalizer(raw_config: Mapping[str, Any]) -> NumberNormalizer:
     allow_grouped_numbers = bool(
         raw_config.get(CONF_NUMBER_ALLOW_GROUPED_NUMBERS, False)
     )
+    separate_german_word_parts = bool(
+        raw_config.get(CONF_NUMBER_SEPARATE_GERMAN_WORD_PARTS, False)
+    )
     output_language = str(raw_config.get(CONF_OUTPUT_LANGUAGE, "") or "")
     locale_hint = _number_locale_hint(language, output_language)
     if not enabled:
@@ -236,6 +247,7 @@ def parse_number_normalizer(raw_config: Mapping[str, Any]) -> NumberNormalizer:
             enabled=False,
             language=language,
             allow_grouped_numbers=allow_grouped_numbers,
+            separate_german_word_parts=separate_german_word_parts,
             locale_hint=locale_hint,
         )
 
@@ -254,6 +266,7 @@ def parse_number_normalizer(raw_config: Mapping[str, Any]) -> NumberNormalizer:
         enabled=True,
         language=language,
         allow_grouped_numbers=allow_grouped_numbers,
+        separate_german_word_parts=separate_german_word_parts,
         locale_hint=locale_hint,
     )
 
@@ -271,6 +284,11 @@ def supported_number_spellout_languages() -> tuple[str, ...]:
 def _number_locale_hint(number_language: str, output_language: str) -> str:
     """Return the best locale hint for ambiguous grouped numbers."""
     return number_language or output_language
+
+
+def _supports_german_word_part_separation(language: str) -> bool:
+    """Return if the selected number spellout language has curated separation."""
+    return str(language or "").replace("-", "_").lower() == "de"
 
 
 def normalize_text_from_raw_config(text: str, raw_config: Mapping[str, Any]) -> str:
