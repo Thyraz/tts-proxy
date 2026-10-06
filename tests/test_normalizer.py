@@ -796,7 +796,13 @@ class EmojiNormalizerTests(unittest.TestCase):
             language="de",
         )
 
-        with patch.dict("sys.modules", {"emoji": fake_emoji}):
+        with (
+            patch.dict("sys.modules", {"emoji": fake_emoji}),
+            patch(
+                "custom_components.tts_proxy.emoji_normalizer._LOADED_EMOJI_LANGUAGES",
+                set(),
+            ),
+        ):
             self.assertEqual(
                 normalize_text("Gut 😄", [], emoji_normalizer=normalizer),
                 "Gut, grinsendes gesicht mit lachenden augen",

@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.components import websocket_api
 from homeassistant.components.tts import TextToSpeechEntity
@@ -27,7 +26,6 @@ from .const import (
     CONF_EMOJI_HANDLING,
     CONF_EMOJI_LANGUAGE,
     CONF_EMOJI_NORMALIZER_ENABLED,
-    CONF_TARGET_TTS_ENTITY,
     CONF_MARKDOWN_CLEANUP_ENABLED,
     CONF_MARKDOWN_REMOVE_CODE_BLOCKS,
     CONF_MARKDOWN_REMOVE_DIVIDER_LINES,
@@ -50,6 +48,7 @@ from .const import (
     CONF_PREVIEW_TEXT,
     CONF_REPLACEMENT_RULES,
     CONF_SAFETY_TAIL_CHARS,
+    CONF_TARGET_TTS_ENTITY,
     CONF_TEXT_CLEANUP_REPLACE_LINE_BREAKS,
     CONF_TIME_CLOCK_TIMES_ENABLED,
     CONF_TIME_DURATIONS_ENABLED,
@@ -67,14 +66,22 @@ from .const import (
     EMOJI_HANDLING_REMOVE,
     EMOJI_HANDLING_SPELLOUT,
     MAX_PREVIEW_TEXT_CHARS,
+    PLACEMENT_LINE_START,
+    PLACEMENT_MESSAGE_START,
+    PLACEMENT_SENTENCE_START,
     PREVIEW_NAME,
+    RULE_CASE_SENSITIVE,
+    RULE_CONDITION_ENTITY,
+    RULE_CONDITION_MAX_AGE,
+    RULE_CONDITION_STATE,
     RULE_DISABLED,
     RULE_FIND,
-    RULE_CASE_SENSITIVE,
     RULE_MODE,
+    RULE_MODE_INSERT,
     RULE_MODE_LITERAL,
     RULE_MODE_REGEX,
     RULE_NAME,
+    RULE_PLACEMENTS,
     RULE_REPLACE,
     SECTION_DATES,
     SECTION_EMOJI,
@@ -110,6 +117,7 @@ from .normalizer import (
     supported_number_spellout_languages,
 )
 from .preview import preview_event_payload
+from .rules import EntityStateReport
 from .time_normalizer import (
     TimeNormalizationError,
     default_time_locale,
@@ -282,7 +290,7 @@ def _details_schema(
     *,
     emoji_languages: list[str],
 ) -> vol.Schema:
-    """Build the Output Language, Replacement Rules, and buffer schema."""
+    """Build the Output Language, Text Processing Rules, and buffer schema."""
     defaults = form_defaults(defaults)
     languages = _supported_languages(hass, target_tts_entity)
     language_default = defaults.get(CONF_OUTPUT_LANGUAGE)
@@ -339,9 +347,7 @@ def _details_schema(
                 defaults
             ),
             vol.Required(SECTION_MARKDOWN): _markdown_section_schema(defaults),
-            vol.Required(SECTION_TEXT_CLEANUP): _text_cleanup_section_schema(
-                defaults
-            ),
+            vol.Required(SECTION_TEXT_CLEANUP): _text_cleanup_section_schema(defaults),
             vol.Required(SECTION_EMOJI): _emoji_section_schema(
                 emoji_languages,
                 emoji_language_default,
@@ -416,7 +422,7 @@ def _general_section_schema(
 
 
 def _replacement_rules_section_schema(defaults: dict[str, Any]) -> Any:
-    """Return the Replacement Rules section schema."""
+    """Return the Text Processing Rules section schema."""
     return form_section(
         vol.Schema(
             {
@@ -444,22 +450,79 @@ def _replacement_rules_section_schema(defaults: dict[str, Any]) -> Any:
                                 "required": False,
                                 "selector": selector.SelectSelector(
                                     selector.SelectSelectorConfig(
-                                        options=[RULE_MODE_LITERAL, RULE_MODE_REGEX]
+                                        options=[
+                                            {
+                                                "value": RULE_MODE_LITERAL,
+                                                "label": "Literal replacement",
+                                            },
+                                            {
+                                                "value": RULE_MODE_REGEX,
+                                                "label": "Regex replacement",
+                                            },
+                                            {
+                                                "value": RULE_MODE_INSERT,
+                                                "label": "Insert text",
+                                            },
+                                        ]
                                     )
                                 ),
                             },
                             RULE_FIND: {
-                                "label": "Find",
-                                "required": True,
-                                "selector": selector.TextSelector(),
-                            },
-                            RULE_REPLACE: {
-                                "label": "Replace",
+                                "label": "Find (literal/regex only)",
                                 "required": False,
                                 "selector": selector.TextSelector(),
                             },
+                            RULE_REPLACE: {
+                                "label": "Replacement / insertion text (spaces are preserved)",
+                                "required": False,
+                                "selector": selector.TextSelector(
+                                    selector.TextSelectorConfig(multiline=True)
+                                ),
+                            },
+                            RULE_PLACEMENTS: {
+                                "label": "Insertion placements (insert mode only)",
+                                "required": False,
+                                "selector": selector.SelectSelector(
+                                    selector.SelectSelectorConfig(
+                                        multiple=True,
+                                        options=[
+                                            {
+                                                "value": PLACEMENT_MESSAGE_START,
+                                                "label": "Message start",
+                                            },
+                                            {
+                                                "value": PLACEMENT_LINE_START,
+                                                "label": "Line starts",
+                                            },
+                                            {
+                                                "value": PLACEMENT_SENTENCE_START,
+                                                "label": "Sentence starts",
+                                            },
+                                        ],
+                                    )
+                                ),
+                            },
+                            RULE_CONDITION_ENTITY: {
+                                "label": "Condition entity (optional)",
+                                "required": False,
+                                "selector": selector.EntitySelector(),
+                            },
+                            RULE_CONDITION_STATE: {
+                                "label": "Activating state (raw HA state, e.g. on or below_horizon)",
+                                "required": False,
+                                "selector": selector.TextSelector(),
+                            },
+                            RULE_CONDITION_MAX_AGE: {
+                                "label": "Maximum report age (seconds, optional)",
+                                "required": False,
+                                "selector": selector.NumberSelector(
+                                    selector.NumberSelectorConfig(
+                                        min=1, step=1, mode="box"
+                                    )
+                                ),
+                            },
                             RULE_CASE_SENSITIVE: {
-                                "label": "Case sensitive",
+                                "label": "Case-sensitive replacement (literal/regex only)",
                                 "required": False,
                                 "selector": selector.BooleanSelector(),
                             },
@@ -682,9 +745,7 @@ def _number_section_schema(
                 ): selector.BooleanSelector(),
                 vol.Optional(
                     CONF_NUMBER_SEPARATE_GERMAN_WORD_PARTS,
-                    default=defaults.get(
-                        CONF_NUMBER_SEPARATE_GERMAN_WORD_PARTS, False
-                    ),
+                    default=defaults.get(CONF_NUMBER_SEPARATE_GERMAN_WORD_PARTS, False),
                 ): selector.BooleanSelector(),
                 vol.Optional(
                     CONF_NUMBER_SPELLOUT_LANGUAGE,
@@ -828,8 +889,7 @@ def _date_renderer_options() -> list[dict[str, str]]:
         "numeric_fallback": "Numeric fallback",
     }
     return [
-        {"value": value, "label": labels[value]}
-        for value in supported_date_renderers()
+        {"value": value, "label": labels[value]} for value in supported_date_renderers()
     ]
 
 
@@ -1020,7 +1080,15 @@ async def ws_start_preview(
 
     try:
         await async_prepare_emoji_config(hass, user_input)
-        normalized = normalize_text_from_raw_config(preview_text, user_input)
+        entity_states = {
+            state.entity_id: EntityStateReport(state.state, state.last_reported)
+            for state in hass.states.async_all()
+        }
+        normalized = normalize_text_from_raw_config(
+            preview_text,
+            user_input,
+            entity_states=entity_states,
+        )
     except (
         DateNormalizationError,
         EmojiNormalizationError,

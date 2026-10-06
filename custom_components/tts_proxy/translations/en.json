@@ -26,7 +26,7 @@
             }
           },
           "replacements": {
-            "name": "Replacement Rules",
+            "name": "Text Processing Rules",
             "data": {
               "replacement_rules": " "
             }
@@ -123,7 +123,7 @@
     "error": {
       "invalid_target_tts_entity": "Select a non-proxy TTS entity.",
       "unsupported_output_language": "The selected Target TTS Entity does not support this Output Language.",
-      "invalid_rule": "One or more Replacement Rules are invalid.",
+      "invalid_rule": "One or more Text Processing Rules are invalid.",
       "invalid_emoji_normalizer": "Select a supported Emoji Language when Spell out emoji is enabled.",
       "invalid_date_normalizer": "Check Date Locale, Date Renderer, Date Input Formats, and Standalone Year range.",
       "invalid_time_normalizer": "Select a supported Time Locale when the Time Normalizer is enabled.",
@@ -158,7 +158,7 @@
             }
           },
           "replacements": {
-            "name": "Replacement Rules",
+            "name": "Text Processing Rules",
             "data": {
               "replacement_rules": " "
             }
@@ -255,7 +255,7 @@
     "error": {
       "invalid_target_tts_entity": "Select a non-proxy TTS entity.",
       "unsupported_output_language": "The selected Target TTS Entity does not support this Output Language.",
-      "invalid_rule": "One or more Replacement Rules are invalid.",
+      "invalid_rule": "One or more Text Processing Rules are invalid.",
       "invalid_emoji_normalizer": "Select a supported Emoji Language when Spell out emoji is enabled.",
       "invalid_date_normalizer": "Check Date Locale, Date Renderer, Date Input Formats, and Standalone Year range.",
       "invalid_time_normalizer": "Select a supported Time Locale when the Time Normalizer is enabled.",

@@ -75,6 +75,18 @@ RULE_FIND = "find"
 RULE_REPLACE = "replace"
 RULE_IGNORE_CASE = "ignore_case"
 RULE_CASE_SENSITIVE = "case_sensitive"
+RULE_CONDITION_ENTITY = "condition_entity"
+RULE_CONDITION_MAX_AGE = "condition_max_age_seconds"
+RULE_CONDITION_STATE = "condition_state"
+RULE_PLACEMENTS = "placements"
+
+PLACEMENT_MESSAGE_START = "message_start"
+PLACEMENT_LINE_START = "line_start"
+PLACEMENT_SENTENCE_START = "sentence_start"
+
+# Private TTS options included in Home Assistant's audio cache key.
+OPTION_PROCESSING_FINGERPRINT = "_tts_proxy_processing_fingerprint"
+OPTION_REQUEST_ID = "_tts_proxy_request_id"
 
 DATE_INPUT_FORMAT_DMY_DOT = "dmy_dot"
 DATE_INPUT_FORMAT_DMY_DOT_NO_YEAR = "dmy_dot_no_year"
@@ -96,3 +108,4 @@ EMOJI_HANDLING_SPELLOUT = "spell_out"
 
 RULE_MODE_LITERAL = "literal"
 RULE_MODE_REGEX = "regex"
+RULE_MODE_INSERT = "insert"

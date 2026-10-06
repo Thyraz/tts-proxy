@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncGenerator, Callable, Iterable, Mapping
 from dataclasses import dataclass
-from enum import StrEnum
-import re
 from typing import Any
 
 from .const import (
@@ -17,16 +16,6 @@ from .const import (
     CONF_REPLACEMENT_RULES,
     DEFAULT_MAX_BUFFER_CHARS,
     DEFAULT_SAFETY_TAIL_CHARS,
-    RULE_ENABLED,
-    RULE_DISABLED,
-    RULE_NAME,
-    RULE_FIND,
-    RULE_IGNORE_CASE,
-    RULE_CASE_SENSITIVE,
-    RULE_MODE,
-    RULE_MODE_LITERAL,
-    RULE_MODE_REGEX,
-    RULE_REPLACE,
 )
 from .date_normalizer import (
     DateNormalizer,
@@ -45,10 +34,19 @@ from .numeric_text import (
     numeric_text_re,
     parse_numeric_text,
 )
+from .rules import (
+    EntityStateReport,
+    ReplacementRule,  # noqa: F401 - Preserve the public replacement-rule import.
+    RuleMode,  # noqa: F401 - Preserve the public replacement-rule import.
+    RuleValidationError,
+    TextProcessingRule,
+    resolve_rules,
+)
 from .text_cleanup_normalizer import (
     TextCleanupNormalizer,
     parse_text_cleanup_normalizer,
 )
+from .text_insertion import TextInsertionProcessor
 from .time_normalizer import TimeNormalizer, parse_time_normalizer
 from .unit_normalizer import UnitNormalizer, parse_unit_normalizer
 
@@ -59,99 +57,8 @@ _CLOSING_PUNCTUATION = "\"')]}"
 NumberConverter = Callable[[int | str, str], str]
 
 
-class RuleMode(StrEnum):
-    """Supported Replacement Rule modes."""
-
-    LITERAL = RULE_MODE_LITERAL
-    REGEX = RULE_MODE_REGEX
-
-
-class RuleValidationError(ValueError):
-    """Raised when a Replacement Rule is invalid."""
-
-
 class NumberNormalizationError(ValueError):
     """Raised when Number Normalizer configuration is invalid."""
-
-
-@dataclass(frozen=True, slots=True)
-class ReplacementRule:
-    """A configured text Replacement Rule."""
-
-    find: str
-    replace: str
-    mode: RuleMode = RuleMode.LITERAL
-    ignore_case: bool = False
-    enabled: bool = True
-    name: str = ""
-
-    def __post_init__(self) -> None:
-        """Validate direct rule construction."""
-        if not isinstance(self.mode, RuleMode):
-            object.__setattr__(self, "mode", RuleMode(str(self.mode)))
-        self.validate()
-
-    @classmethod
-    def from_raw(cls, raw: Mapping[str, Any]) -> "ReplacementRule":
-        """Build a rule from config-flow data."""
-        raw_mode = raw.get(RULE_MODE) or RuleMode.LITERAL.value
-        try:
-            mode = RuleMode(str(raw_mode))
-        except ValueError as err:
-            raise RuleValidationError(f"Unsupported rule mode: {raw_mode!r}") from err
-
-        if RULE_DISABLED in raw:
-            enabled = not bool(raw.get(RULE_DISABLED))
-        else:
-            enabled = bool(raw.get(RULE_ENABLED, True))
-
-        if RULE_CASE_SENSITIVE in raw:
-            ignore_case = not bool(raw.get(RULE_CASE_SENSITIVE))
-        else:
-            ignore_case = bool(raw.get(RULE_IGNORE_CASE, True))
-
-        return cls(
-            find=str(raw.get(RULE_FIND, "")),
-            replace=str(raw.get(RULE_REPLACE, "")),
-            mode=mode,
-            ignore_case=ignore_case,
-            enabled=enabled,
-            name=str(raw.get(RULE_NAME, "") or "").strip(),
-        )
-
-    def validate(self) -> None:
-        """Validate this rule."""
-        if not self.find:
-            raise RuleValidationError("Replacement rule find value cannot be empty")
-
-        if self.mode is RuleMode.REGEX:
-            try:
-                re.compile(self.find, self._flags)
-            except re.error as err:
-                raise RuleValidationError(f"Invalid regex rule {self.find!r}: {err}") from err
-
-    @property
-    def _flags(self) -> int:
-        """Return regex flags for this rule."""
-        return re.IGNORECASE if self.ignore_case else 0
-
-    def apply(self, text: str) -> str:
-        """Apply this rule once to a text segment."""
-        if not self.enabled:
-            return text
-
-        if self.mode is RuleMode.REGEX:
-            return re.sub(self.find, self.replace, text, flags=self._flags)
-
-        if self.ignore_case:
-            return re.sub(
-                re.escape(self.find),
-                lambda _match: self.replace,
-                text,
-                flags=self._flags,
-            )
-
-        return text.replace(self.find, self.replace)
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,9 +77,9 @@ class NumberNormalizer:
         if not self.enabled or not self.language:
             return text
 
-        return numeric_text_re(
-            allow_grouped_numbers=self.allow_grouped_numbers
-        ).sub(self._replace_match, text)
+        return numeric_text_re(allow_grouped_numbers=self.allow_grouped_numbers).sub(
+            self._replace_match, text
+        )
 
     @property
     def _number_converter(self) -> NumberConverter:
@@ -291,12 +198,19 @@ def _supports_german_word_part_separation(language: str) -> bool:
     return str(language or "").replace("-", "_").lower() == "de"
 
 
-def normalize_text_from_raw_config(text: str, raw_config: Mapping[str, Any]) -> str:
+def normalize_text_from_raw_config(
+    text: str,
+    raw_config: Mapping[str, Any],
+    *,
+    entity_states: Mapping[str, str | EntityStateReport] | None = None,
+) -> str:
     """Normalize text using raw Proxy Configuration data."""
     raw_config = flatten_config_sections(raw_config)
     return normalize_text(
         text,
-        parse_rules(raw_config.get(CONF_REPLACEMENT_RULES, [])),
+        resolve_rules(
+            parse_rules(raw_config.get(CONF_REPLACEMENT_RULES, [])), entity_states
+        ),
         markdown_normalizer=parse_markdown_cleanup_normalizer(raw_config),
         text_cleanup_normalizer=parse_text_cleanup_normalizer(raw_config),
         emoji_normalizer=parse_emoji_normalizer(raw_config),
@@ -307,29 +221,29 @@ def normalize_text_from_raw_config(text: str, raw_config: Mapping[str, Any]) -> 
     )
 
 
-def parse_rules(raw_rules: Any) -> tuple[ReplacementRule, ...]:
-    """Parse and validate Replacement Rules from configuration."""
+def parse_rules(raw_rules: Any) -> tuple[TextProcessingRule, ...]:
+    """Parse and validate Text Processing Rules from configuration."""
     if raw_rules in (None, ""):
         return ()
 
     if not isinstance(raw_rules, list):
-        raise RuleValidationError("Replacement rules must be a list")
+        raise RuleValidationError("Text processing rules must be a list")
 
-    rules: list[ReplacementRule] = []
+    rules: list[TextProcessingRule] = []
     for index, raw_rule in enumerate(raw_rules, start=1):
         if not isinstance(raw_rule, Mapping):
-            raise RuleValidationError(f"Replacement rule {index} must be an object")
+            raise RuleValidationError(f"Text processing rule {index} must be an object")
         try:
-            rules.append(ReplacementRule.from_raw(raw_rule))
+            rules.append(TextProcessingRule.from_raw(raw_rule))
         except RuleValidationError as err:
-            raise RuleValidationError(f"Replacement rule {index}: {err}") from err
+            raise RuleValidationError(f"Text processing rule {index}: {err}") from err
 
     return tuple(rules)
 
 
 def normalize_text(
     text: str,
-    rules: Iterable[ReplacementRule],
+    rules: Iterable[TextProcessingRule],
     number_normalizer: NumberNormalizer | None = None,
     date_normalizer: DateNormalizer | None = None,
     markdown_normalizer: MarkdownCleanupNormalizer | None = None,
@@ -337,24 +251,57 @@ def normalize_text(
     text_cleanup_normalizer: TextCleanupNormalizer | None = None,
     unit_normalizer: UnitNormalizer | None = None,
     time_normalizer: TimeNormalizer | None = None,
+    *,
+    entity_states: Mapping[str, str | EntityStateReport] | None = None,
 ) -> str:
-    """Normalize text while preserving Provider Control Tags."""
+    """Normalize a logical message, resolving conditions once."""
     if not text:
         return text
+    rules = resolve_rules(rules, entity_states)
+    normalized = _normalize_before_insertions(text, rules, markdown_normalizer)
+    normalized = TextInsertionProcessor(rules).feed(normalized, final=True)
+    return _normalize_after_insertions(
+        normalized,
+        text_cleanup_normalizer,
+        number_normalizer,
+        date_normalizer,
+        emoji_normalizer,
+        time_normalizer,
+        unit_normalizer,
+    )
 
+
+def _normalize_before_insertions(
+    text: str,
+    rules: Iterable[TextProcessingRule],
+    markdown_normalizer: MarkdownCleanupNormalizer | None,
+) -> str:
+    """Apply replacements and Markdown Cleanup before insertion boundaries."""
     normalized = _normalize_preserving_control_tags(
         text,
         lambda segment: _apply_rules(segment, rules),
     )
     if markdown_normalizer is not None:
         normalized = markdown_normalizer.normalize(normalized)
+    return normalized
+
+
+def _normalize_after_insertions(
+    text: str,
+    text_cleanup_normalizer: TextCleanupNormalizer | None,
+    number_normalizer: NumberNormalizer | None,
+    date_normalizer: DateNormalizer | None,
+    emoji_normalizer: EmojiNormalizer | None,
+    time_normalizer: TimeNormalizer | None,
+    unit_normalizer: UnitNormalizer | None,
+) -> str:
+    """Clean and normalize speech text while leaving inserted tags opaque."""
     if text_cleanup_normalizer is not None:
-        normalized = _normalize_preserving_control_tags(
-            normalized,
-            text_cleanup_normalizer.normalize,
+        text = _normalize_preserving_control_tags(
+            text, text_cleanup_normalizer.normalize
         )
     return _normalize_preserving_control_tags(
-        normalized,
+        text,
         lambda segment: _apply_builtin_normalizers(
             segment,
             number_normalizer,
@@ -387,7 +334,7 @@ def _normalize_preserving_control_tags(
 
 async def normalize_stream(
     chunks: AsyncGenerator[str],
-    rules: Iterable[ReplacementRule],
+    rules: Iterable[TextProcessingRule],
     number_normalizer: NumberNormalizer | None = None,
     date_normalizer: DateNormalizer | None = None,
     markdown_normalizer: MarkdownCleanupNormalizer | None = None,
@@ -398,50 +345,41 @@ async def normalize_stream(
     *,
     safety_tail_chars: int = DEFAULT_SAFETY_TAIL_CHARS,
     max_buffer_chars: int = DEFAULT_MAX_BUFFER_CHARS,
+    entity_states: Mapping[str, str | EntityStateReport] | None = None,
 ) -> AsyncGenerator[str]:
-    """Normalize an async text stream with bounded buffering."""
+    """Normalize buffered text with one condition snapshot and insertion state."""
     validate_streaming_buffer_config(safety_tail_chars, max_buffer_chars)
-
+    rules = resolve_rules(rules, entity_states)
+    insertions = TextInsertionProcessor(rules)
     pending = ""
-    materialized_rules = tuple(rules)
+
+    def process(segment: str, *, final: bool = False) -> str:
+        normalized = _normalize_before_insertions(segment, rules, markdown_normalizer)
+        inserted = insertions.feed(normalized, final=final)
+        return _normalize_after_insertions(
+            inserted,
+            text_cleanup_normalizer,
+            number_normalizer,
+            date_normalizer,
+            emoji_normalizer,
+            time_normalizer,
+            unit_normalizer,
+        )
 
     async for chunk in chunks:
         if not chunk:
             continue
         pending += chunk
-
         while flush_at := _next_flush_index(
             pending,
             safety_tail_chars=safety_tail_chars,
             max_buffer_chars=max_buffer_chars,
         ):
-            segment = pending[:flush_at]
-            pending = pending[flush_at:]
-            if segment:
-                yield normalize_text(
-                    segment,
-                    materialized_rules,
-                    markdown_normalizer=markdown_normalizer,
-                    number_normalizer=number_normalizer,
-                    date_normalizer=date_normalizer,
-                    emoji_normalizer=emoji_normalizer,
-                    text_cleanup_normalizer=text_cleanup_normalizer,
-                    unit_normalizer=unit_normalizer,
-                    time_normalizer=time_normalizer,
-                )
-
-    if pending:
-        yield normalize_text(
-            pending,
-            materialized_rules,
-            markdown_normalizer=markdown_normalizer,
-            number_normalizer=number_normalizer,
-            date_normalizer=date_normalizer,
-            emoji_normalizer=emoji_normalizer,
-            text_cleanup_normalizer=text_cleanup_normalizer,
-            unit_normalizer=unit_normalizer,
-            time_normalizer=time_normalizer,
-        )
+            segment, pending = pending[:flush_at], pending[flush_at:]
+            if normalized := process(segment):
+                yield normalized
+    if normalized := process(pending, final=True):
+        yield normalized
 
 
 def validate_streaming_buffer_config(
@@ -459,7 +397,7 @@ def validate_streaming_buffer_config(
         )
 
 
-def _apply_rules(text: str, rules: Iterable[ReplacementRule]) -> str:
+def _apply_rules(text: str, rules: Iterable[TextProcessingRule]) -> str:
     """Apply enabled rules to one speech-text segment."""
     normalized = text
     for rule in rules:

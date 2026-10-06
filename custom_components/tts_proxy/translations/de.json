@@ -26,7 +26,7 @@
             }
           },
           "replacements": {
-            "name": "Ersetzungsregeln",
+            "name": "Textverarbeitungsregeln",
             "data": {
               "replacement_rules": " "
             }
@@ -123,7 +123,7 @@
     "error": {
       "invalid_target_tts_entity": "Wähle eine TTS-Entität, die kein Proxy ist.",
       "unsupported_output_language": "Die gewählte Ziel-TTS-Entität unterstützt diese Ausgabesprache nicht.",
-      "invalid_rule": "Eine oder mehrere Ersetzungsregeln sind ungültig.",
+      "invalid_rule": "Eine oder mehrere Textverarbeitungsregeln sind ungültig.",
       "invalid_emoji_normalizer": "Wähle eine unterstützte Emoji-Sprache, wenn Emoji ausgeschrieben werden sollen.",
       "invalid_date_normalizer": "Prüfe Datums-Locale, Datums-Renderer, Datumsformate und Bereich für einzelne Jahreszahlen.",
       "invalid_time_normalizer": "Wähle eine unterstützte Zeit-Locale, wenn die Zeitnormalisierung aktiviert ist.",
@@ -158,7 +158,7 @@
             }
           },
           "replacements": {
-            "name": "Ersetzungsregeln",
+            "name": "Textverarbeitungsregeln",
             "data": {
               "replacement_rules": " "
             }
@@ -255,7 +255,7 @@
     "error": {
       "invalid_target_tts_entity": "Wähle eine TTS-Entität, die kein Proxy ist.",
       "unsupported_output_language": "Die gewählte Ziel-TTS-Entität unterstützt diese Ausgabesprache nicht.",
-      "invalid_rule": "Eine oder mehrere Ersetzungsregeln sind ungültig.",
+      "invalid_rule": "Eine oder mehrere Textverarbeitungsregeln sind ungültig.",
       "invalid_emoji_normalizer": "Wähle eine unterstützte Emoji-Sprache, wenn Emoji ausgeschrieben werden sollen.",
       "invalid_date_normalizer": "Prüfe Datums-Locale, Datums-Renderer, Datumsformate und Bereich für einzelne Jahreszahlen.",
       "invalid_time_normalizer": "Wähle eine unterstützte Zeit-Locale, wenn die Zeitnormalisierung aktiviert ist.",

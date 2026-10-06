@@ -1,6 +1,6 @@
 # TTS Proxy
 
-This context covers text replacement and built-in text normalization before Home Assistant text-to-speech synthesis.
+This context covers text replacement, text insertion, and built-in text normalization before Home Assistant text-to-speech synthesis.
 
 ## Language
 
@@ -17,24 +17,52 @@ The single TTS language exposed by a Proxy TTS Entity and passed to its Target T
 _Avoid_: replacement language, input language
 
 **Proxy Configuration**:
-The setup and options data for one Proxy TTS Entity: display name, Target TTS Entity, Output Language, Replacement Rules, Markdown Cleanup settings, Text Cleanup settings, Emoji Normalizer settings, Date Normalizer settings, Time Normalizer settings, Unit Normalizer settings, Number Normalizer settings, and streaming buffer settings. The Output Language must be supported by the Target TTS Entity when the configuration is saved. Each config entry owns exactly one Proxy TTS Entity.
+The setup and options data for one Proxy TTS Entity: display name, Target TTS Entity, Output Language, Text Processing Rules, Markdown Cleanup settings, Text Cleanup settings, Emoji Normalizer settings, Date Normalizer settings, Time Normalizer settings, Unit Normalizer settings, Number Normalizer settings, and streaming buffer settings. The Output Language must be supported by the Target TTS Entity when the configuration is saved. Each config entry owns exactly one Proxy TTS Entity.
 _Avoid_: runtime selector
 
 **Proxy Reconfiguration**:
-Changing a Proxy TTS Entity's Target TTS Entity, Output Language, or replacement rules through Home Assistant configuration flows after the entity has been created.
+Changing a Proxy TTS Entity's Target TTS Entity, Output Language, or Text Processing Rules through Home Assistant configuration flows after the entity has been created.
 _Avoid_: per-call routing
 
 **Passthrough TTS Option**:
 A per-call Home Assistant TTS option accepted by the Proxy TTS Entity only because it is supported by the Target TTS Entity or is one of Home Assistant's preferred audio output options.
 _Avoid_: replacement option
 
+**Text Processing Rule**:
+A user-configured Replacement Rule or Text Insertion Rule owned by a Proxy TTS Entity. It may have one optional Entity State Condition.
+_Avoid_: speech tag setting, whisper rule
+
 **Replacement Rule**:
 A user-defined text replacement rule owned by a Proxy TTS Entity. Rules use literal or regex matching to define what input text to match and what output text to emit before delegating to the Target TTS Entity. Rules run in user-configured order, and each rule sees the output of previous rules. Each rule is applied once per normalization pass, not recursively until stable. Matching is case-insensitive by default, with an optional per-rule case-sensitive flag. Each rule can be enabled or disabled without being deleted. Regex rules must compile successfully before Proxy Configuration or Proxy Reconfiguration is saved.
 _Avoid_: per-call option
 
-**Replacement Rule Name**:
-An optional display-only label for a Replacement Rule. It helps identify a rule in Home Assistant's collapsed options-flow row, but does not affect matching, replacement output, ordering, validation, or runtime behavior.
+**Text Processing Rule Name**:
+An optional display-only label for a Text Processing Rule. It helps identify a rule in Home Assistant's collapsed options-flow row, but does not affect matching, replacement output, ordering, validation, or runtime behavior.
 _Avoid_: rule id, rule condition
+
+**Text Insertion Rule**:
+A Text Processing Rule that adds configured literal text at its selected Insertion Placements. The inserted text may contain Provider Control Tags or ordinary speech text.
+_Avoid_: tag replacement, whisper setting
+
+**Insertion Placements**:
+The selected message, line, and sentence starts at which one Text Insertion Rule adds its text. A rule may select several placements, inserts only once where those placements overlap, and does not add text to empty lines.
+_Avoid_: regex anchors, chunk starts
+
+**Sentence Start**:
+The first speech text in a TTS message, or speech text after `.`, `!`, or `?` followed by whitespace, with intervening closing quotes allowed. This is a punctuation-based insertion boundary that may also occur after abbreviations.
+_Avoid_: grammatical sentence boundary, language-aware sentence detection
+
+**Entity State Condition**:
+An optional activation requirement on a Text Processing Rule that is met when one selected Home Assistant entity has the exact configured state and, if configured, satisfies its Condition Maximum Age. Different rules owned by the same Proxy TTS Entity may refer to different entities, states, and age limits.
+_Avoid_: state trigger, whisper sensor
+
+**Condition Maximum Age**:
+An optional per-rule limit in seconds on the age of the selected entity's most recent state report when the Condition Snapshot is captured. Reports older than this limit do not activate the rule; omitting the limit allows reports of any age.
+_Avoid_: expiry timer, speaker selection
+
+**Condition Snapshot**:
+The activation results of a Proxy TTS Entity's Entity State Conditions when response text first becomes available for processing, rather than when a stream is prepared. Those results determine which rules apply throughout that message, including streamed text, regardless of later entity state changes or reports aging beyond their Condition Maximum Age.
+_Avoid_: live condition, conversation state
 
 **Markdown Cleanup Normalizer**:
 An optional built-in normalizer owned by a Proxy TTS Entity that removes or simplifies configured Markdown syntax before Text Cleanup, Emoji Normalizer, Date Normalizer, Time Normalizer, Unit Normalizer, and Number Normalizer processing. It is cleanup-oriented rather than a semantic Markdown-to-speech renderer, and each supported Markdown feature can be enabled separately. The MVP supports common emphasis, heading, list, table, link, image, inline-code, code-block, blockquote, divider-line, strikethrough, and plain-URL cleanup, but not reference-style links, footnotes, definition lists, HTML cleanup, escaped Markdown punctuation, or nested Markdown edge cases.
@@ -209,7 +237,7 @@ A Date Renderer that speaks day, month, and optional year as numeric parts witho
 _Avoid_: generic date renderer, automatic locale support
 
 **Normalization Preview**:
-A configuration-time view of the text a Proxy TTS Entity would send to its Target TTS Entity after applying Replacement Rules, Markdown Cleanup, Text Cleanup, the Emoji Normalizer, the Date Normalizer, the Time Normalizer, the Unit Normalizer, and the Number Normalizer. It uses unsaved form values when available, does not synthesize audio, and does not change saved configuration.
+A configuration-time view of the text a Proxy TTS Entity would send to its Target TTS Entity after applying Text Processing Rules, Markdown Cleanup, Text Cleanup, the Emoji Normalizer, the Date Normalizer, the Time Normalizer, the Unit Normalizer, and the Number Normalizer. It uses unsaved form values when available and a fresh Condition Snapshot from current Home Assistant entity states, without synthesizing audio or changing saved configuration.
 _Avoid_: TTS preview, Assist preview, test playback
 
 **Rule Preset**:
@@ -217,7 +245,7 @@ A future package of suggested Replacement Rules for a common language or use cas
 _Avoid_: built-in grammar
 
 **Provider Control Tag**:
-Inline markup in TTS input that a Target TTS Entity may interpret as voice, pronunciation, pause, or delivery control. Provider Control Tags are preserved by the Proxy TTS Entity and are not changed by Replacement Rules, Text Cleanup, Emoji Normalizer, Date Normalizer, Time Normalizer, Unit Normalizer, or Number Normalizer. Markdown Cleanup may rewrite explicit Markdown constructs, but isolated Provider Control Tags stay opaque.
+Inline markup in TTS input that a Target TTS Entity may interpret as voice, pronunciation, pause, or delivery control. Provider Control Tags are preserved by the Proxy TTS Entity and are not changed by Text Processing Rules, Text Cleanup, Emoji Normalizer, Date Normalizer, Time Normalizer, Unit Normalizer, or Number Normalizer. Markdown Cleanup may rewrite explicit Markdown constructs, but isolated Provider Control Tags stay opaque.
 _Avoid_: replacement target
 
 **Minimal Lookahead Buffer Length**:

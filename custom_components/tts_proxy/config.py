@@ -16,7 +16,6 @@ from .const import (
     CONF_EMOJI_HANDLING,
     CONF_EMOJI_LANGUAGE,
     CONF_EMOJI_NORMALIZER_ENABLED,
-    CONF_TARGET_TTS_ENTITY,
     CONF_MARKDOWN_CLEANUP_ENABLED,
     CONF_MARKDOWN_REMOVE_CODE_BLOCKS,
     CONF_MARKDOWN_REMOVE_DIVIDER_LINES,
@@ -39,6 +38,7 @@ from .const import (
     CONF_PREVIEW_TEXT,
     CONF_REPLACEMENT_RULES,
     CONF_SAFETY_TAIL_CHARS,
+    CONF_TARGET_TTS_ENTITY,
     CONF_TEXT_CLEANUP_REPLACE_LINE_BREAKS,
     CONF_TIME_CLOCK_TIMES_ENABLED,
     CONF_TIME_DURATIONS_ENABLED,
@@ -51,6 +51,9 @@ from .const import (
     DEFAULT_NAME,
     DEFAULT_SAFETY_TAIL_CHARS,
     RULE_CASE_SENSITIVE,
+    RULE_CONDITION_ENTITY,
+    RULE_CONDITION_MAX_AGE,
+    RULE_CONDITION_STATE,
     RULE_DISABLED,
     RULE_ENABLED,
     RULE_FIND,
@@ -58,28 +61,29 @@ from .const import (
     RULE_MODE,
     RULE_MODE_LITERAL,
     RULE_NAME,
+    RULE_PLACEMENTS,
     RULE_REPLACE,
 )
+from .date_normalizer import DateNormalizer, parse_date_normalizer
 from .emoji_normalizer import EmojiNormalizer, parse_emoji_normalizer
 from .form_data import flatten_config_sections
 from .markdown_normalizer import (
     MarkdownCleanupNormalizer,
     parse_markdown_cleanup_normalizer,
 )
+from .normalizer import (
+    NumberNormalizer,
+    parse_number_normalizer,
+    parse_rules,
+    validate_streaming_buffer_config,
+)
+from .rules import TextProcessingRule
 from .text_cleanup_normalizer import (
     TextCleanupNormalizer,
     parse_text_cleanup_normalizer,
 )
 from .time_normalizer import TimeNormalizer, parse_time_normalizer
 from .unit_normalizer import UnitNormalizer, parse_unit_normalizer
-from .normalizer import (
-    NumberNormalizer,
-    ReplacementRule,
-    parse_number_normalizer,
-    parse_rules,
-    validate_streaming_buffer_config,
-)
-from .date_normalizer import DateNormalizer, parse_date_normalizer
 
 CONF_NAME = "name"
 
@@ -91,7 +95,7 @@ class ProxyConfig:
     name: str
     target_tts_entity: str
     output_language: str
-    rules: tuple[ReplacementRule, ...]
+    rules: tuple[TextProcessingRule, ...]
     markdown_normalizer: MarkdownCleanupNormalizer
     text_cleanup_normalizer: TextCleanupNormalizer
     emoji_normalizer: EmojiNormalizer
@@ -164,18 +168,12 @@ def serializable_config(raw_config: dict[str, Any]) -> dict[str, Any]:
         ),
         CONF_MARKDOWN_STRIP_TABLES: config.markdown_normalizer.strip_tables,
         CONF_MARKDOWN_STRIP_LINKS: config.markdown_normalizer.strip_links,
-        CONF_MARKDOWN_REMOVE_PLAIN_URLS: (
-            config.markdown_normalizer.remove_plain_urls
-        ),
-        CONF_MARKDOWN_STRIP_INLINE_CODE: (
-            config.markdown_normalizer.strip_inline_code
-        ),
+        CONF_MARKDOWN_REMOVE_PLAIN_URLS: (config.markdown_normalizer.remove_plain_urls),
+        CONF_MARKDOWN_STRIP_INLINE_CODE: (config.markdown_normalizer.strip_inline_code),
         CONF_MARKDOWN_REMOVE_CODE_BLOCKS: (
             config.markdown_normalizer.remove_code_blocks
         ),
-        CONF_MARKDOWN_STRIP_BLOCKQUOTES: (
-            config.markdown_normalizer.strip_blockquotes
-        ),
+        CONF_MARKDOWN_STRIP_BLOCKQUOTES: (config.markdown_normalizer.strip_blockquotes),
         CONF_MARKDOWN_REMOVE_DIVIDER_LINES: (
             config.markdown_normalizer.remove_divider_lines
         ),
@@ -232,9 +230,9 @@ def form_defaults(raw_config: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def serializable_replacement_rules(
-    rules: tuple[ReplacementRule, ...],
+    rules: tuple[TextProcessingRule, ...],
 ) -> list[dict[str, Any]]:
-    """Return Replacement Rules using only current UI field names."""
+    """Return Text Processing Rules using current UI field names."""
     return [
         {
             RULE_NAME: rule.name,
@@ -243,6 +241,24 @@ def serializable_replacement_rules(
             RULE_FIND: rule.find,
             RULE_REPLACE: rule.replace,
             RULE_CASE_SENSITIVE: not rule.ignore_case,
+            **(
+                {RULE_PLACEMENTS: [p.value for p in rule.placements]}
+                if rule.placements
+                else {}
+            ),
+            **(
+                {
+                    RULE_CONDITION_ENTITY: rule.condition.entity_id,
+                    RULE_CONDITION_STATE: rule.condition.state,
+                    **(
+                        {RULE_CONDITION_MAX_AGE: rule.condition.max_age_seconds}
+                        if rule.condition.max_age_seconds is not None
+                        else {}
+                    ),
+                }
+                if rule.condition
+                else {}
+            ),
         }
         for rule in rules
     ]
@@ -267,6 +283,22 @@ def _form_rule_defaults(raw_rule: dict[str, Any]) -> dict[str, Any]:
         RULE_FIND: str(raw_rule.get(RULE_FIND, "")),
         RULE_REPLACE: str(raw_rule.get(RULE_REPLACE, "")),
         RULE_CASE_SENSITIVE: case_sensitive,
+        **(
+            {RULE_PLACEMENTS: raw_rule[RULE_PLACEMENTS]}
+            if RULE_PLACEMENTS in raw_rule
+            else {}
+        ),
+        **(
+            {
+                key: raw_rule[key]
+                for key in (
+                    RULE_CONDITION_ENTITY,
+                    RULE_CONDITION_STATE,
+                    RULE_CONDITION_MAX_AGE,
+                )
+                if key in raw_rule
+            }
+        ),
     }
 
 

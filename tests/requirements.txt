@@ -1,0 +1,5 @@
+homeassistant==2026.9.4
+ha-ffmpeg==3.2.2
+mutagen==1.48.1
+emoji==2.15.0
+num2words==0.5.14
